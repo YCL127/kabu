@@ -3,12 +3,12 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>班級投資模擬遊戲 (台股張數/走勢圖版)</title>
+  <title>班級投資模擬遊戲 (動態走勢與股息教學版)</title>
   <!-- Tailwind CSS CDN -->
   <script src="https://cdn.tailwindcss.com"></script>
   <!-- PeerJS 免費公開 P2P 連線庫 -->
   <script src="https://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js"></script>
-  <!-- QR Code 產生庫 -->
+  <!-- QR Code 庫 -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
   <!-- Chart.js 走勢圖庫 -->
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
@@ -26,24 +26,24 @@
         <span id="roleBadge" class="text-xs px-2.5 py-0.5 rounded-full font-semibold bg-slate-700 text-slate-200">未連線</span>
       </div>
       <div id="roomInfo" class="hidden text-sm bg-slate-800 px-3 py-1 rounded-md border border-slate-700 flex items-center space-x-3">
-        <span>房間代碼：<strong id="displayRoomCode" class="text-amber-400 text-base tracking-widest">----</strong></span>
+        <span id="headerRoomCodeBox">房間：<strong id="displayRoomCode" class="text-amber-400 tracking-widest">----</strong></span>
         <span>輪數：<strong id="displayRound" class="text-emerald-400">1</strong> / 20</span>
       </div>
     </div>
   </header>
 
-  <main class="max-w-5xl mx-auto p-4 sm:p-6">
+  <main class="max-w-6xl mx-auto p-4 sm:p-6">
     <!-- 1. 入口身分選擇區塊 -->
     <section id="entrySection" class="max-w-md mx-auto mt-10 glass-box p-6 rounded-2xl shadow-xl border border-slate-200">
       <h2 class="text-xl font-black text-center mb-1 text-slate-800">歡迎進入投資模擬市場</h2>
-      <p class="text-xs text-slate-500 text-center mb-6">每位同學擁有初始資金 100 萬元，以「張」(1,000股) 為單位</p>
+      <p class="text-xs text-slate-500 text-center mb-6">起始資金 100 萬，以「張」(1,000股) 為交易單位</p>
 
       <div class="space-y-4">
         <!-- 學生加入 -->
         <div class="p-4 bg-slate-50 rounded-xl border border-slate-200">
           <h3 class="font-bold text-sm text-indigo-700 mb-2">我是學生（加入遊戲）</h3>
           <div class="space-y-2">
-            <input type="text" id="inputRoomCode" placeholder="請輸入4位房間代碼 (如 8842)" maxlength="4" class="w-full px-3 py-2 text-center tracking-widest font-black uppercase text-lg border rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none" />
+            <input type="text" id="inputRoomCode" placeholder="請輸入 4 位房間代碼" maxlength="4" class="w-full px-3 py-2 text-center tracking-widest font-black uppercase text-lg border rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none" />
             <input type="text" id="inputStudentName" placeholder="請輸入座號與姓名 (如 05 王小明)" class="w-full px-3 py-2 text-sm border rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none" />
             <button onclick="joinAsStudent()" class="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-2 rounded-lg transition shadow text-sm">連線進入教室</button>
           </div>
@@ -63,59 +63,77 @@
     </section>
 
     <!-- 2. 老師主控台 -->
-    <section id="hostSection" class="hidden space-y-6">
-      <div class="bg-white p-6 rounded-2xl shadow border border-slate-200 flex flex-col md:flex-row justify-between items-center gap-4">
+    <section id="hostSection" class="hidden space-y-5">
+      <div class="bg-white p-5 rounded-2xl shadow border border-slate-200 flex flex-col md:flex-row justify-between items-center gap-4">
         <div>
-          <h2 class="text-xl font-black text-slate-900">老師端主控面板</h2>
-          <p class="text-xs text-slate-500">投影此大螢幕讓學生連線，查看走勢並點擊推進輪次。</p>
+          <h2 class="text-xl font-black text-slate-900 flex items-center gap-2">
+            老師端主控面板
+            <span id="gameLockedBadge" class="hidden text-xs bg-rose-100 text-rose-700 border border-rose-300 px-2 py-0.5 rounded">🔒 已鎖定加入</span>
+          </h2>
+          <p class="text-xs text-slate-500">大螢幕集中呈現市場新聞與走勢，引導學生思考與判讀。</p>
         </div>
         <div class="flex items-center space-x-3">
+          <button id="btnLockRoom" onclick="lockAndStartGame()" class="px-4 py-2.5 bg-amber-500 hover:bg-amber-600 text-white font-bold rounded-xl text-sm shadow transition">
+            開始遊戲 (隱藏代碼)
+          </button>
           <button onclick="hostNextRound()" class="px-6 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-xl shadow transition text-sm">
             結算並進入下一輪 (Next)
           </button>
         </div>
       </div>
 
-      <!-- 連線指引與進度 -->
-      <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
-        <div class="bg-white p-4 rounded-xl border border-slate-200 flex flex-col items-center justify-center text-center">
-          <div class="text-xs text-slate-500 mb-1">房間連線代碼</div>
+      <!-- 連線指引 (遊戲開始後隱藏此區塊) -->
+      <div id="hostLobbyCard" class="grid grid-cols-1 md:grid-cols-3 gap-4 bg-white p-4 rounded-xl border border-indigo-100 shadow-sm">
+        <div class="flex flex-col items-center justify-center text-center p-2 border-r md:border-slate-200">
+          <div class="text-xs text-slate-500 mb-1">連線代碼 (4碼)</div>
           <div id="hostRoomCodeDisplay" class="text-4xl font-black tracking-widest text-indigo-600">----</div>
-          <div id="qrcode" class="mt-3"></div>
-          <div class="text-[10px] text-slate-400 mt-2">掃描 QR Code 或輸入代碼</div>
+          <div id="qrcode" class="mt-2"></div>
         </div>
-
-        <div class="bg-white p-4 rounded-xl border border-slate-200 md:col-span-2">
-          <div class="flex justify-between items-center mb-2">
-            <span class="text-xs font-bold text-slate-600">全班下單繳交進度</span>
+        <div class="md:col-span-2 flex flex-col justify-center">
+          <div class="flex justify-between items-center mb-1">
+            <span class="text-xs font-bold text-slate-600">學生加入與繳交進度</span>
             <span id="hostProgressCount" class="text-sm font-bold text-indigo-600">0 / 0 人已完成</span>
           </div>
-          <div class="w-full bg-slate-100 h-2.5 rounded-full overflow-hidden mb-4">
+          <div class="w-full bg-slate-100 h-2.5 rounded-full overflow-hidden mb-3">
             <div id="hostProgressBar" class="bg-indigo-600 h-full w-0 transition-all duration-300"></div>
           </div>
-          <div class="text-xs font-semibold text-slate-500 mb-1">學生即時名冊：</div>
-          <div id="hostStudentRoster" class="flex flex-wrap gap-2 max-h-36 overflow-y-auto"></div>
+          <div class="text-xs font-semibold text-slate-500 mb-1">已連線學生名冊：</div>
+          <div id="hostStudentRoster" class="flex flex-wrap gap-1.5 max-h-24 overflow-y-auto"></div>
         </div>
       </div>
 
-      <!-- 走勢圖表 -->
+      <!-- 全班大螢幕看版：本輪客觀事件 -->
+      <div class="bg-amber-50 border-l-4 border-amber-500 p-4 rounded-r-xl shadow-sm">
+        <div class="flex justify-between items-center mb-2">
+          <h3 class="text-sm font-black text-amber-900 flex items-center gap-1.5">
+            📰 本輪市場產業客觀事件（請同學抬頭評估情勢）
+          </h3>
+          <span id="dividendNoticeBadge" class="hidden text-xs bg-emerald-600 text-white px-2 py-0.5 rounded-full font-bold animate-pulse">💰 本輪發放股利</span>
+        </div>
+        <div id="hostNewsBox" class="grid grid-cols-1 md:grid-cols-2 gap-2 text-xs text-slate-800"></div>
+      </div>
+
+      <!-- 動態移動視窗走勢圖 (一次展示 5 格跨度，往右滑動) -->
       <div class="bg-white p-4 rounded-xl shadow border border-slate-200">
-        <h3 class="font-bold text-xs text-slate-700 mb-3">📊 各檔股票歷史走勢圖</h3>
+        <div class="flex justify-between items-center mb-2">
+          <h3 class="font-bold text-xs text-slate-700">📊 近期走勢圖 (動態跨度視窗)</h3>
+          <span class="text-[11px] text-slate-400">平移展示最近動態</span>
+        </div>
         <div class="relative h-64 sm:h-72 w-full">
           <canvas id="hostChart"></canvas>
         </div>
       </div>
 
-      <!-- 老師端行情即時總表 -->
+      <!-- 行情與股息特點對照表 -->
       <div class="bg-white rounded-xl shadow border border-slate-200 overflow-hidden">
-        <div class="p-3 bg-slate-50 border-b border-slate-200 font-bold text-xs text-slate-700">各檔股票當前現價與即將結算變動率</div>
         <table class="w-full text-left text-xs">
           <thead class="bg-slate-100 text-slate-500 uppercase">
             <tr>
               <th class="p-2.5">代號 / 名稱</th>
-              <th class="p-2.5">每股基準價</th>
-              <th class="p-2.5">每張金額 (1,000股)</th>
-              <th class="p-2.5">本輪事件隱含漲跌</th>
+              <th class="p-2.5">每股市價</th>
+              <th class="p-2.5">每張價格 (1,000股)</th>
+              <th class="p-2.5">股息政策</th>
+              <th class="p-2.5">即將結算隱含漲跌</th>
             </tr>
           </thead>
           <tbody id="hostStockBody" class="divide-y divide-slate-200"></tbody>
@@ -123,12 +141,12 @@
       </div>
     </section>
 
-    <!-- 3. 學生操作介面 -->
-    <section id="studentSection" class="hidden space-y-5">
-      <!-- 資產資訊 -->
+    <!-- 3. 學生端簡潔下單介面 -->
+    <section id="studentSection" class="hidden space-y-4">
+      <!-- 學生資產看板 -->
       <div class="grid grid-cols-2 sm:grid-cols-4 gap-3">
         <div class="bg-white p-3 rounded-xl border border-slate-200 shadow-sm">
-          <div class="text-[11px] text-slate-400 font-medium">投資人</div>
+          <div class="text-[11px] text-slate-400 font-medium">投資人姓名</div>
           <div id="stuPlayerName" class="text-base font-bold text-slate-800 truncate">--</div>
         </div>
         <div class="bg-white p-3 rounded-xl border border-slate-200 shadow-sm">
@@ -145,35 +163,38 @@
         </div>
       </div>
 
-      <!-- 市場客觀資訊動態 -->
-      <div class="bg-amber-50 border-l-4 border-amber-500 p-3 rounded-r-xl">
-        <div class="text-xs font-bold text-amber-900 mb-1.5">📰 本輪市場各產業客觀事件：</div>
-        <div id="stuNewsBox" class="space-y-1 text-xs text-slate-700"></div>
+      <!-- 股利通知提示卡片 (有發放時顯示) -->
+      <div id="stuDividendAlert" class="hidden bg-emerald-50 border border-emerald-300 text-emerald-800 p-3 rounded-xl text-xs flex items-center justify-between shadow-sm">
+        <div class="flex items-center space-x-2">
+          <span class="text-base">🎁</span>
+          <span id="stuDividendAlertMsg">恭喜！收到股息入帳。</span>
+        </div>
       </div>
 
-      <!-- 學生端走勢圖表 -->
+      <!-- 學生端專用走勢圖 -->
       <div class="bg-white p-3 rounded-xl border border-slate-200 shadow-sm">
-        <div class="text-xs font-bold text-slate-700 mb-2">📈 市場行情歷史走勢圖</div>
-        <div class="relative h-48 sm:h-56 w-full">
+        <div class="text-xs font-bold text-slate-700 mb-1">📈 市場動態走勢圖 (滾動跨度)</div>
+        <div class="relative h-44 sm:h-52 w-full">
           <canvas id="stuChart"></canvas>
         </div>
       </div>
 
-      <!-- 交易下單專區 (以張為單位) -->
+      <!-- 交易下單面板 (含原購買成本、損益) -->
       <div class="bg-white rounded-xl shadow border border-slate-200 overflow-hidden">
         <div class="p-3 bg-slate-50 border-b border-slate-200 flex justify-between items-center">
-          <span class="text-xs font-bold text-slate-700">股票委託下單 (1張 = 1,000股)</span>
+          <span class="text-xs font-bold text-slate-700">股票下單委託 (請抬頭查看大螢幕新聞)</span>
           <span id="stuStatusPill" class="text-[11px] px-2 py-0.5 rounded font-semibold bg-blue-100 text-blue-700">思考中</span>
         </div>
         <div class="overflow-x-auto">
           <table class="w-full text-left text-xs border-collapse">
             <thead class="bg-slate-100 text-slate-500 uppercase">
               <tr>
-                <th class="p-2.5">股票名稱</th>
-                <th class="p-2.5">每股市價</th>
-                <th class="p-2.5">每張價格</th>
-                <th class="p-2.5">持有張數</th>
-                <th class="p-2.5">買賣動作</th>
+                <th class="p-2.5">股票</th>
+                <th class="p-2.5">現價(每股)</th>
+                <th class="p-2.5">持股張數</th>
+                <th class="p-2.5">每股平均成本</th>
+                <th class="p-2.5">參考損益%</th>
+                <th class="p-2.5">動作</th>
                 <th class="p-2.5">委託張數</th>
               </tr>
             </thead>
@@ -181,21 +202,21 @@
           </table>
         </div>
         <div class="p-3 bg-slate-50 border-t border-slate-200 flex flex-col sm:flex-row justify-between items-center gap-3">
-          <div class="text-[11px] text-slate-400">鎖定送出後不可修改，靜候老師切換下一輪。</div>
+          <div class="text-[11px] text-slate-400">送出後本輪不可修改，靜候老師切換下一輪。</div>
           <button id="stuSubmitBtn" onclick="stuSubmitOrders()" class="w-full sm:w-auto px-6 py-2 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-lg text-xs shadow transition">
             鎖定並送出本輪委託
           </button>
         </div>
       </div>
 
-      <!-- 等待蓋板 -->
+      <!-- 下單完成等待蓋板 -->
       <div id="stuWaitCard" class="hidden bg-emerald-50 border border-emerald-300 text-emerald-800 p-4 rounded-xl text-center">
-        <div class="font-bold text-sm">✅ 已鎖定本輪決策！</div>
-        <div class="text-xs mt-0.5">系統已傳送委託至老師主控台，請等待其他同學與切換下一輪。</div>
+        <div class="font-bold text-sm">✅ 已鎖定送出！</div>
+        <div class="text-xs mt-0.5">請抬頭看大螢幕，等待老師推進下一輪。</div>
       </div>
     </section>
 
-    <!-- 4. 第 20 輪結束：前五名大螢幕排行榜（全體同步顯示） -->
+    <!-- 4. 第 20 輪結束：排行榜 -->
     <section id="leaderboardSection" class="hidden bg-white p-6 sm:p-8 rounded-2xl shadow-xl border border-slate-200 text-center max-w-xl mx-auto">
       <div class="text-4xl mb-1">🏆</div>
       <h2 class="text-2xl font-black text-slate-900 mb-1">全班投資競賽 最終決算排行</h2>
@@ -219,14 +240,14 @@
 
   <script>
     // ==========================================================
-    // 5 檔股票與 20 輪客觀事件劇本
+    // 5 檔股票特性與股利設定
     // ==========================================================
     const STOCKS = {
-      A: { name: "未來晶片", basePrice: 100, color: "#3B82F6" },
-      B: { name: "好食光餐飲", basePrice: 50, color: "#F59E0B" },
-      C: { name: "遠洋航運", basePrice: 60, color: "#10B981" },
-      D: { name: "蔚藍生醫", basePrice: 80, color: "#8B5CF6" },
-      E: { name: "綠光能源", basePrice: 40, color: "#06B6D4" }
+      A: { name: "未來晶片", basePrice: 100, color: "#3B82F6", dividendType: "無配息(成長型)" },
+      B: { name: "好食光餐飲", basePrice: 50, color: "#F59E0B", dividendType: "季配息 (每5輪 $2,500/張)" },
+      C: { name: "遠洋航運", basePrice: 60, color: "#10B981", dividendType: "無配息(景氣型)" },
+      D: { name: "蔚藍生醫", basePrice: 80, color: "#8B5CF6", dividendType: "無配息(研發型)" },
+      E: { name: "綠光能源", basePrice: 40, color: "#06B6D4", dividendType: "年配息 (每10輪 $4,000/張)" }
     };
 
     const ROUNDS_DATA = [
@@ -413,10 +434,11 @@
     ];
 
     // ==========================================================
-    // 全域變數與歷史走勢資料
+    // 全域變數
     // ==========================================================
     let peer = null;
     let isHost = false;
+    let isGameLocked = false;
     let hostConn = null;
     const studentConns = {};
     const studentsState = {};
@@ -424,8 +446,8 @@
     let currentRound = 1;
     let currentPrices = { A: 100, B: 50, C: 60, D: 80, E: 40 };
 
-    // 儲存每輪的歷史價格，供走勢圖繪製
-    let priceHistory = {
+    // 完整歷史數據庫
+    let fullPriceHistory = {
       labels: ["第1輪"],
       datasets: {
         A: [100],
@@ -439,11 +461,12 @@
     let hostChartInstance = null;
     let stuChartInstance = null;
 
-    // 學生本地快取（起始 1,000,000 元，portfolio 單位為「張」）
+    // 學生本地快取（含平均成本 buyCost）
     let myStudentData = {
       name: "",
       cash: 1000000,
       portfolio: { A: 0, B: 0, C: 0, D: 0, E: 0 },
+      buyCost: { A: 0, B: 0, C: 0, D: 0, E: 0 },
       isLocked: false
     };
 
@@ -456,18 +479,35 @@
     });
 
     // ==========================================================
-    // Chart.js 走勢圖建立與更新共用函式
+    // 動態移動視窗走勢圖 (一次展示 5 格跨度，往右平移)
     // ==========================================================
+    function getWindowedChartData() {
+      const WINDOW_SIZE = 5;
+      const totalLen = fullPriceHistory.labels.length;
+      let startIdx = 0;
+      if (totalLen > WINDOW_SIZE) {
+        startIdx = totalLen - WINDOW_SIZE;
+      }
+      const windowLabels = fullPriceHistory.labels.slice(startIdx);
+      const windowDatasets = {};
+      for (let k in STOCKS) {
+        windowDatasets[k] = fullPriceHistory.datasets[k].slice(startIdx);
+      }
+      return { labels: windowLabels, datasets: windowDatasets };
+    }
+
     function initOrUpdateChart(canvasId, isHostChart = false) {
       const ctx = document.getElementById(canvasId).getContext('2d');
+      const windowed = getWindowedChartData();
+
       const chartDatasets = Object.keys(STOCKS).map(k => ({
         label: `${STOCKS[k].name}(${k})`,
-        data: priceHistory.datasets[k],
+        data: windowed.datasets[k],
         borderColor: STOCKS[k].color,
         backgroundColor: STOCKS[k].color,
         borderWidth: 2,
-        tension: 0.2,
-        pointRadius: 3
+        tension: 0.15,
+        pointRadius: 4
       }));
 
       let chartInst = isHostChart ? hostChartInstance : stuChartInstance;
@@ -476,19 +516,20 @@
         const newChart = new Chart(ctx, {
           type: 'line',
           data: {
-            labels: priceHistory.labels,
+            labels: windowed.labels,
             datasets: chartDatasets
           },
           options: {
             responsive: true,
             maintainAspectRatio: false,
+            animation: { duration: 400 },
             interaction: { mode: 'index', intersect: false },
             plugins: {
-              legend: { position: 'top', labels: { boxWidth: 12, font: { size: 11 } } },
+              legend: { position: 'top', labels: { boxWidth: 10, font: { size: 11 } } },
               tooltip: {
                 callbacks: {
-                  label: function(context) {
-                    return `${context.dataset.label}: $${context.parsed.y} (張: $${(context.parsed.y * 1000).toLocaleString()})`;
+                  label: function(c) {
+                    return `${c.dataset.label}: $${c.parsed.y} (張: $${(c.parsed.y * 1000).toLocaleString()})`;
                   }
                 }
               }
@@ -501,9 +542,9 @@
         if (isHostChart) hostChartInstance = newChart;
         else stuChartInstance = newChart;
       } else {
-        chartInst.data.labels = priceHistory.labels;
+        chartInst.data.labels = windowed.labels;
         Object.keys(STOCKS).forEach((k, idx) => {
-          chartInst.data.datasets[idx].data = priceHistory.datasets[k];
+          chartInst.data.datasets[idx].data = windowed.datasets[k];
         });
         chartInst.update();
       }
@@ -521,7 +562,7 @@
       const peerId = 'STOCK-ROOM-' + code;
       peer = new Peer(peerId);
 
-      peer.on('open', (id) => {
+      peer.on('open', () => {
         document.getElementById('entrySection').classList.add('hidden');
         document.getElementById('hostSection').classList.remove('hidden');
         document.getElementById('roomInfo').classList.remove('hidden');
@@ -535,15 +576,21 @@
         const joinUrl = `${window.location.origin}${window.location.pathname}?room=${code}`;
         new QRCode(document.getElementById("qrcode"), {
           text: joinUrl,
-          width: 110,
-          height: 110
+          width: 100,
+          height: 100
         });
 
+        renderHostNews();
         renderHostStockTable();
         initOrUpdateChart('hostChart', true);
       });
 
       peer.on('connection', (conn) => {
+        if (isGameLocked) {
+          conn.close();
+          return;
+        }
+
         conn.on('open', () => {
           studentConns[conn.peer] = conn;
         });
@@ -557,15 +604,41 @@
           renderHostDashboard();
         });
       });
+    }
 
-      peer.on('error', (err) => {
-        if(err.type === 'unavailable-id') {
-          alert('房間碼碰撞，請重新點擊建立！');
-          location.reload();
+    function lockAndStartGame() {
+      isGameLocked = true;
+      document.getElementById('hostLobbyCard').classList.add('hidden');
+      document.getElementById('headerRoomCodeBox').classList.add('hidden');
+      document.getElementById('gameLockedBadge').classList.remove('hidden');
+      document.getElementById('btnLockRoom').classList.add('hidden');
+    }
+
+    function renderHostNews() {
+      const box = document.getElementById('hostNewsBox');
+      box.innerHTML = '';
+      const roundIdx = currentRound - 1;
+      const roundData = ROUNDS_DATA[roundIdx] || ROUNDS_DATA[0];
+
+      // 檢查本輪是否有股利發放
+      const divBadge = document.getElementById('dividendNoticeBadge');
+      if (currentRound % 5 === 0) {
+        divBadge.classList.remove('hidden');
+        if (currentRound === 10 || currentRound === 20) {
+          divBadge.innerText = '💰 本輪發放：好食光餐飲(季配) 與 綠光能源(年配) 股利！';
         } else {
-          console.error(err);
+          divBadge.innerText = '💰 本輪發放：好食光餐飲(季配) 股利！';
         }
-      });
+      } else {
+        divBadge.classList.add('hidden');
+      }
+
+      for (let k in roundData.news) {
+        const div = document.createElement('div');
+        div.className = 'p-2.5 bg-white rounded-lg border border-amber-200 shadow-sm';
+        div.innerHTML = `<span class="font-bold text-slate-900">[${STOCKS[k].name}]</span> ${roundData.news[k]}`;
+        box.appendChild(div);
+      }
     }
 
     function handleHostReceivedData(peerId, data) {
@@ -574,24 +647,27 @@
           name: data.name,
           cash: 1000000,
           portfolio: { A: 0, B: 0, C: 0, D: 0, E: 0 },
+          buyCost: { A: 0, B: 0, C: 0, D: 0, E: 0 },
           readyRound: 0
         };
-        // 回傳輪次、價格與走勢圖資料給該學生
         broadcastToStudent(peerId, {
           type: 'SYNC_ROUND',
           round: currentRound,
           prices: currentPrices,
-          priceHistory: priceHistory,
+          fullPriceHistory: fullPriceHistory,
           cash: studentsState[peerId].cash,
-          portfolio: studentsState[peerId].portfolio
+          portfolio: studentsState[peerId].portfolio,
+          buyCost: studentsState[peerId].buyCost,
+          dividendMsg: null
         });
         renderHostDashboard();
       } else if (data.type === 'SUBMIT_ORDER') {
-        const student = studentsState[peerId];
-        if (student) {
-          student.cash = data.cash;
-          student.portfolio = data.portfolio;
-          student.readyRound = currentRound;
+        const s = studentsState[peerId];
+        if (s) {
+          s.cash = data.cash;
+          s.portfolio = data.portfolio;
+          s.buyCost = data.buyCost;
+          s.readyRound = currentRound;
         }
         renderHostDashboard();
       }
@@ -624,7 +700,7 @@
         const s = studentsState[k];
         const isDone = s.readyRound === currentRound;
         const tag = document.createElement('span');
-        tag.className = `text-xs px-2.5 py-1 rounded-md font-medium border ${isDone ? 'bg-emerald-100 text-emerald-800 border-emerald-300' : 'bg-slate-100 text-slate-500 border-slate-200'}`;
+        tag.className = `text-xs px-2 py-0.5 rounded font-medium border ${isDone ? 'bg-emerald-100 text-emerald-800 border-emerald-300' : 'bg-slate-100 text-slate-500 border-slate-200'}`;
         tag.innerText = `${s.name} ${isDone ? '✓' : '…'}`;
         roster.appendChild(tag);
       });
@@ -647,6 +723,7 @@
           <td class="p-2.5 font-semibold">${STOCKS[k].name} (${k})</td>
           <td class="p-2.5 font-bold text-slate-900">$${currentPrices[k].toFixed(1)}</td>
           <td class="p-2.5 font-bold text-indigo-700">$${sheetPrice}</td>
+          <td class="p-2.5 text-slate-500 font-medium">${STOCKS[k].dividendType}</td>
           <td class="p-2.5 ${rateColor}">${rateText}</td>
         `;
         tbody.appendChild(tr);
@@ -654,23 +731,48 @@
     }
 
     function hostNextRound() {
-      if (!confirm(`確定要推進至下一輪嗎？未下單同學將自動維持既有持股與現金。`)) return;
+      if (!confirm(`確定要推進至下一輪嗎？未下單同學將自動維持既有持股。`)) return;
 
       const roundIdx = currentRound - 1;
       const rates = ROUNDS_DATA[roundIdx].rates;
 
-      // 1. 計算新價格並紀錄至走勢圖
+      // 1. 計算新價格並記錄
       for (let k in currentPrices) {
         const changeRate = rates[k] || 0;
         currentPrices[k] = Math.max(1, +(currentPrices[k] * (1 + changeRate)).toFixed(1));
-        priceHistory.datasets[k].push(currentPrices[k]);
+        fullPriceHistory.datasets[k].push(currentPrices[k]);
       }
 
-      // 2. 判斷是否第 20 輪結束
+      // 2. 股利結算派發 (B 季配每5輪 $2500/張；E 年配每10輪 $4000/張)
+      const dividendReports = {};
+      for (let peerId in studentsState) {
+        const s = studentsState[peerId];
+        let earned = 0;
+        let details = [];
+
+        // B 好食光餐飲 (季配)
+        if (currentRound % 5 === 0 && s.portfolio.B > 0) {
+          const divB = s.portfolio.B * 2500;
+          earned += divB;
+          details.push(`好食光餐飲 $${divB.toLocaleString()}`);
+        }
+        // E 綠光能源 (年配)
+        if (currentRound % 10 === 0 && s.portfolio.E > 0) {
+          const divE = s.portfolio.E * 4000;
+          earned += divE;
+          details.push(`綠光能源 $${divE.toLocaleString()}`);
+        }
+
+        if (earned > 0) {
+          s.cash += earned;
+          dividendReports[peerId] = `本輪獲得股利：${details.join('、')}，已入帳可用現金！`;
+        }
+      }
+
+      // 3. 判斷是否結束
       if (currentRound >= 20) {
         const rankings = calculateRankings();
         renderLeaderboardUI(rankings);
-        // 同步廣播結算資料給所有學生端
         broadcastToAll({
           type: 'GAME_OVER',
           prices: currentPrices,
@@ -680,23 +782,26 @@
       }
 
       currentRound += 1;
-      priceHistory.labels.push(`第${currentRound}輪`);
+      fullPriceHistory.labels.push(`第${currentRound}輪`);
 
       document.getElementById('displayRound').innerText = currentRound;
+      renderHostNews();
       renderHostStockTable();
       renderHostDashboard();
       initOrUpdateChart('hostChart', true);
 
-      // 通知全體學生更新輪數與歷史走勢
+      // 通知學生
       for (let peerId in studentConns) {
         const s = studentsState[peerId];
         broadcastToStudent(peerId, {
           type: 'SYNC_ROUND',
           round: currentRound,
           prices: currentPrices,
-          priceHistory: priceHistory,
+          fullPriceHistory: fullPriceHistory,
           cash: s.cash,
-          portfolio: s.portfolio
+          portfolio: s.portfolio,
+          buyCost: s.buyCost,
+          dividendMsg: dividendReports[peerId] || null
         });
       }
     }
@@ -707,7 +812,6 @@
         const s = studentsState[k];
         let stockVal = 0;
         for (let symbol in s.portfolio) {
-          // 1 張 = 1000 股
           stockVal += (s.portfolio[symbol] || 0) * (currentPrices[symbol] * 1000);
         }
         const total = s.cash + stockVal;
@@ -756,13 +860,12 @@
         });
 
         hostConn.on('close', () => {
-          alert('與老師主控台的連線已中斷。');
+          alert('與老師主控台連線已中斷。');
         });
       });
 
       peer.on('error', (err) => {
-        alert('連線失敗，請確認房間代碼是否正確！');
-        console.error(err);
+        alert('連線失敗，房間代碼可能錯誤或老師已開始鎖定房間！');
       });
     }
 
@@ -770,22 +873,32 @@
       if (data.type === 'SYNC_ROUND') {
         currentRound = data.round;
         currentPrices = data.prices;
-        priceHistory = data.priceHistory;
+        fullPriceHistory = data.fullPriceHistory;
         myStudentData.cash = data.cash;
         myStudentData.portfolio = data.portfolio;
+        myStudentData.buyCost = data.buyCost || myStudentData.buyCost;
         myStudentData.isLocked = false;
 
         document.getElementById('displayRound').innerText = currentRound;
+
+        // 股利通知
+        const divBox = document.getElementById('stuDividendAlert');
+        if (data.dividendMsg) {
+          divBox.classList.remove('hidden');
+          document.getElementById('stuDividendAlertMsg').innerText = data.dividendMsg;
+        } else {
+          divBox.classList.add('hidden');
+        }
+
         renderStudentUI();
         initOrUpdateChart('stuChart', false);
       } else if (data.type === 'GAME_OVER') {
-        // 學生端同步顯示結算排行榜
         renderLeaderboardUI(data.rankings);
       }
     }
 
     function renderStudentUI() {
-      // 1. 資產顯示（1張 = 1,000股）
+      // 1. 資產顯示
       document.getElementById('stuCash').innerText = `$${Math.round(myStudentData.cash).toLocaleString()}`;
       let stockVal = 0;
       for (let k in myStudentData.portfolio) {
@@ -794,34 +907,33 @@
       document.getElementById('stuStockVal').innerText = `$${Math.round(stockVal).toLocaleString()}`;
       document.getElementById('stuTotalNet').innerText = `$${Math.round(myStudentData.cash + stockVal).toLocaleString()}`;
 
-      // 2. 本輪新聞
-      const newsBox = document.getElementById('stuNewsBox');
-      newsBox.innerHTML = '';
-      const roundIdx = currentRound - 1;
-      const currentNews = ROUNDS_DATA[roundIdx] ? ROUNDS_DATA[roundIdx].news : {};
-
-      for (let k in currentNews) {
-        const p = document.createElement('div');
-        p.innerHTML = `<strong class="text-slate-900">[${STOCKS[k].name}]</strong> ${currentNews[k]}`;
-        newsBox.appendChild(p);
-      }
-
-      // 3. 下單列表 (以張為單位)
+      // 2. 下單列表 (含平均成本與未實現損益)
       const tbody = document.getElementById('stuStockBody');
       tbody.innerHTML = '';
       const isLocked = myStudentData.isLocked;
 
       for (let k in STOCKS) {
         const price = currentPrices[k];
-        const sheetPrice = (price * 1000).toLocaleString();
         const holdingSheets = myStudentData.portfolio[k] || 0;
+        const avgCost = myStudentData.buyCost[k] || 0;
+
+        let plText = "--";
+        let plColor = "text-slate-400";
+        if (holdingSheets > 0 && avgCost > 0) {
+          const plRate = ((price - avgCost) / avgCost) * 100;
+          plText = `${plRate >= 0 ? '+' : ''}${plRate.toFixed(1)}%`;
+          plColor = plRate >= 0 ? 'text-rose-600 font-bold' : 'text-emerald-600 font-bold';
+        }
+
+        const costDisplay = avgCost > 0 ? `$${avgCost.toFixed(1)}` : "--";
 
         const tr = document.createElement('tr');
         tr.innerHTML = `
           <td class="p-2.5 font-semibold text-slate-800">${STOCKS[k].name}</td>
           <td class="p-2.5 font-bold text-slate-900">$${price.toFixed(1)}</td>
-          <td class="p-2.5 font-bold text-indigo-700">$${sheetPrice}</td>
-          <td class="p-2.5 font-medium text-slate-600">${holdingSheets} 張</td>
+          <td class="p-2.5 font-medium text-slate-700">${holdingSheets} 張</td>
+          <td class="p-2.5 font-medium text-slate-600">${costDisplay}</td>
+          <td class="p-2.5 ${plColor}">${plText}</td>
           <td class="p-2.5">
             <select id="act_${k}" ${isLocked ? 'disabled' : ''} class="border border-slate-300 rounded px-1.5 py-1 text-xs">
               <option value="HOLD">維持</option>
@@ -830,13 +942,13 @@
             </select>
           </td>
           <td class="p-2.5">
-            <input type="number" id="qty_${k}" min="0" value="0" ${isLocked ? 'disabled' : ''} class="w-16 sm:w-20 border border-slate-300 rounded px-1.5 py-1 text-xs" placeholder="張數" />
+            <input type="number" id="qty_${k}" min="0" value="0" ${isLocked ? 'disabled' : ''} class="w-16 border border-slate-300 rounded px-1.5 py-1 text-xs" placeholder="張數" />
           </td>
         `;
         tbody.appendChild(tr);
       }
 
-      // 鎖定狀態控制
+      // 鎖定按鈕控制
       const submitBtn = document.getElementById('stuSubmitBtn');
       const waitCard = document.getElementById('stuWaitCard');
       const pill = document.getElementById('stuStatusPill');
@@ -859,46 +971,56 @@
 
       let tempCash = myStudentData.cash;
       const tempPortfolio = { ...myStudentData.portfolio };
+      const tempBuyCost = { ...myStudentData.buyCost };
 
-      // 檢查現金與庫存（以「張」換算）
+      // 檢查現金、庫存並試算加權平均成本
       for (let k in STOCKS) {
         const act = document.getElementById(`act_${k}`).value;
         const sheets = parseInt(document.getElementById(`qty_${k}`).value) || 0;
-        const sheetCost = currentPrices[k] * 1000;
+        const price = currentPrices[k];
+        const sheetCost = price * 1000;
 
         if (act === 'BUY' && sheets > 0) {
           const totalCost = sheets * sheetCost;
           if (tempCash < totalCost) {
-            return alert(`資金不足！買入 ${sheets} 張 ${STOCKS[k].name} 需要 $${Math.round(totalCost).toLocaleString()}，可用現金僅剩 $${Math.round(tempCash).toLocaleString()}`);
+            return alert(`資金不足！買入 ${sheets} 張 ${STOCKS[k].name} 需要 $${Math.round(totalCost).toLocaleString()}`);
           }
           tempCash -= totalCost;
-          tempPortfolio[k] = (tempPortfolio[k] || 0) + sheets;
+          const oldSheets = tempPortfolio[k] || 0;
+          const oldCost = tempBuyCost[k] || price;
+          // 加權平均成本
+          tempBuyCost[k] = ((oldSheets * oldCost) + (sheets * price)) / (oldSheets + sheets);
+          tempPortfolio[k] = oldSheets + sheets;
         } else if (act === 'SELL' && sheets > 0) {
           const curSheets = tempPortfolio[k] || 0;
           if (sheets > curSheets) {
-            return alert(`庫存不足！您僅持有 ${curSheets} 張 ${STOCKS[k].name}，無法賣出 ${sheets} 張`);
+            return alert(`庫存不足！您僅持有 ${curSheets} 張 ${STOCKS[k].name}`);
           }
           tempCash += sheets * sheetCost;
           tempPortfolio[k] = curSheets - sheets;
+          if (tempPortfolio[k] === 0) {
+            tempBuyCost[k] = 0; // 全數賣出則成本歸零
+          }
         }
       }
 
       myStudentData.cash = tempCash;
       myStudentData.portfolio = tempPortfolio;
+      myStudentData.buyCost = tempBuyCost;
       myStudentData.isLocked = true;
 
-      // 回傳給老師主機
       hostConn.send({
         type: 'SUBMIT_ORDER',
         cash: tempCash,
-        portfolio: tempPortfolio
+        portfolio: tempPortfolio,
+        buyCost: tempBuyCost
       });
 
       renderStudentUI();
     }
 
     // ==========================================================
-    // 結算大螢幕 UI 渲染共用函式（老師端與學生端同步調用）
+    // 結算排行榜渲染
     // ==========================================================
     function renderLeaderboardUI(rankings) {
       document.getElementById('hostSection').classList.add('hidden');
