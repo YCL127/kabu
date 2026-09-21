@@ -3,13 +3,15 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>班級投資模擬遊戲 (P2P免後端版)</title>
+  <title>班級投資模擬遊戲 (台股張數/走勢圖版)</title>
   <!-- Tailwind CSS CDN -->
   <script src="https://cdn.tailwindcss.com"></script>
   <!-- PeerJS 免費公開 P2P 連線庫 -->
   <script src="https://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js"></script>
-  <!-- QR Code 產生庫（方便學生手機掃描連線） -->
+  <!-- QR Code 產生庫 -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+  <!-- Chart.js 走勢圖庫 -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
   <style>
     .glass-box { background: rgba(255, 255, 255, 0.96); }
   </style>
@@ -34,15 +36,15 @@
     <!-- 1. 入口身分選擇區塊 -->
     <section id="entrySection" class="max-w-md mx-auto mt-10 glass-box p-6 rounded-2xl shadow-xl border border-slate-200">
       <h2 class="text-xl font-black text-center mb-1 text-slate-800">歡迎進入投資模擬市場</h2>
-      <p class="text-xs text-slate-500 text-center mb-6">全免後端 P2P 模式，由老師主機直連學生端</p>
+      <p class="text-xs text-slate-500 text-center mb-6">每位同學擁有初始資金 100 萬元，以「張」(1,000股) 為單位</p>
 
       <div class="space-y-4">
         <!-- 學生加入 -->
         <div class="p-4 bg-slate-50 rounded-xl border border-slate-200">
           <h3 class="font-bold text-sm text-indigo-700 mb-2">我是學生（加入遊戲）</h3>
           <div class="space-y-2">
-            <input type="text" id="inputRoomCode" placeholder="請輸入4位房間代碼 (例如 8842)" maxlength="4" class="w-full px-3 py-2 text-center tracking-widest font-black uppercase text-lg border rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none" />
-            <input type="text" id="inputStudentName" placeholder="請輸入座號與姓名 (例如 05 王小明)" class="w-full px-3 py-2 text-sm border rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none" />
+            <input type="text" id="inputRoomCode" placeholder="請輸入4位房間代碼 (如 8842)" maxlength="4" class="w-full px-3 py-2 text-center tracking-widest font-black uppercase text-lg border rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none" />
+            <input type="text" id="inputStudentName" placeholder="請輸入座號與姓名 (如 05 王小明)" class="w-full px-3 py-2 text-sm border rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none" />
             <button onclick="joinAsStudent()" class="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-2 rounded-lg transition shadow text-sm">連線進入教室</button>
           </div>
         </div>
@@ -65,7 +67,7 @@
       <div class="bg-white p-6 rounded-2xl shadow border border-slate-200 flex flex-col md:flex-row justify-between items-center gap-4">
         <div>
           <h2 class="text-xl font-black text-slate-900">老師端主控面板</h2>
-          <p class="text-xs text-slate-500">投影此大螢幕讓學生看代碼連線，每輪結束點擊結算切換。</p>
+          <p class="text-xs text-slate-500">投影此大螢幕讓學生連線，查看走勢並點擊推進輪次。</p>
         </div>
         <div class="flex items-center space-x-3">
           <button onclick="hostNextRound()" class="px-6 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-xl shadow transition text-sm">
@@ -74,13 +76,13 @@
         </div>
       </div>
 
-      <!-- 連線指引與 QR Code 投影區 -->
+      <!-- 連線指引與進度 -->
       <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
         <div class="bg-white p-4 rounded-xl border border-slate-200 flex flex-col items-center justify-center text-center">
           <div class="text-xs text-slate-500 mb-1">房間連線代碼</div>
           <div id="hostRoomCodeDisplay" class="text-4xl font-black tracking-widest text-indigo-600">----</div>
           <div id="qrcode" class="mt-3"></div>
-          <div class="text-[10px] text-slate-400 mt-2">手機掃描或輸入代碼皆可加入</div>
+          <div class="text-[10px] text-slate-400 mt-2">掃描 QR Code 或輸入代碼</div>
         </div>
 
         <div class="bg-white p-4 rounded-xl border border-slate-200 md:col-span-2">
@@ -96,6 +98,14 @@
         </div>
       </div>
 
+      <!-- 走勢圖表 -->
+      <div class="bg-white p-4 rounded-xl shadow border border-slate-200">
+        <h3 class="font-bold text-xs text-slate-700 mb-3">📊 各檔股票歷史走勢圖</h3>
+        <div class="relative h-64 sm:h-72 w-full">
+          <canvas id="hostChart"></canvas>
+        </div>
+      </div>
+
       <!-- 老師端行情即時總表 -->
       <div class="bg-white rounded-xl shadow border border-slate-200 overflow-hidden">
         <div class="p-3 bg-slate-50 border-b border-slate-200 font-bold text-xs text-slate-700">各檔股票當前現價與即將結算變動率</div>
@@ -103,7 +113,8 @@
           <thead class="bg-slate-100 text-slate-500 uppercase">
             <tr>
               <th class="p-2.5">代號 / 名稱</th>
-              <th class="p-2.5">當前基準價</th>
+              <th class="p-2.5">每股基準價</th>
+              <th class="p-2.5">每張金額 (1,000股)</th>
               <th class="p-2.5">本輪事件隱含漲跌</th>
             </tr>
           </thead>
@@ -117,20 +128,20 @@
       <!-- 資產資訊 -->
       <div class="grid grid-cols-2 sm:grid-cols-4 gap-3">
         <div class="bg-white p-3 rounded-xl border border-slate-200 shadow-sm">
-          <div class="text-[11px] text-slate-400 font-medium">投資人姓名</div>
+          <div class="text-[11px] text-slate-400 font-medium">投資人</div>
           <div id="stuPlayerName" class="text-base font-bold text-slate-800 truncate">--</div>
         </div>
         <div class="bg-white p-3 rounded-xl border border-slate-200 shadow-sm">
           <div class="text-[11px] text-slate-400 font-medium">可用現金</div>
-          <div id="stuCash" class="text-base font-bold text-emerald-600">$10,000</div>
+          <div id="stuCash" class="text-base font-bold text-emerald-600">$1,000,000</div>
         </div>
         <div class="bg-white p-3 rounded-xl border border-slate-200 shadow-sm">
-          <div class="text-[11px] text-slate-400 font-medium">股票現值</div>
+          <div class="text-[11px] text-slate-400 font-medium">持股市值</div>
           <div id="stuStockVal" class="text-base font-bold text-indigo-600">$0</div>
         </div>
         <div class="bg-white p-3 rounded-xl border border-slate-200 shadow-sm">
           <div class="text-[11px] text-slate-400 font-medium">總資產淨值</div>
-          <div id="stuTotalNet" class="text-base font-bold text-amber-600">$10,000</div>
+          <div id="stuTotalNet" class="text-base font-bold text-amber-600">$1,000,000</div>
         </div>
       </div>
 
@@ -140,21 +151,30 @@
         <div id="stuNewsBox" class="space-y-1 text-xs text-slate-700"></div>
       </div>
 
-      <!-- 交易下單專區 -->
+      <!-- 學生端走勢圖表 -->
+      <div class="bg-white p-3 rounded-xl border border-slate-200 shadow-sm">
+        <div class="text-xs font-bold text-slate-700 mb-2">📈 市場行情歷史走勢圖</div>
+        <div class="relative h-48 sm:h-56 w-full">
+          <canvas id="stuChart"></canvas>
+        </div>
+      </div>
+
+      <!-- 交易下單專區 (以張為單位) -->
       <div class="bg-white rounded-xl shadow border border-slate-200 overflow-hidden">
         <div class="p-3 bg-slate-50 border-b border-slate-200 flex justify-between items-center">
-          <span class="text-xs font-bold text-slate-700">交易操作面板</span>
+          <span class="text-xs font-bold text-slate-700">股票委託下單 (1張 = 1,000股)</span>
           <span id="stuStatusPill" class="text-[11px] px-2 py-0.5 rounded font-semibold bg-blue-100 text-blue-700">思考中</span>
         </div>
         <div class="overflow-x-auto">
           <table class="w-full text-left text-xs border-collapse">
             <thead class="bg-slate-100 text-slate-500 uppercase">
               <tr>
-                <th class="p-2.5">股票</th>
-                <th class="p-2.5">現價</th>
-                <th class="p-2.5">持股</th>
-                <th class="p-2.5">動作</th>
-                <th class="p-2.5">股數</th>
+                <th class="p-2.5">股票名稱</th>
+                <th class="p-2.5">每股市價</th>
+                <th class="p-2.5">每張價格</th>
+                <th class="p-2.5">持有張數</th>
+                <th class="p-2.5">買賣動作</th>
+                <th class="p-2.5">委託張數</th>
               </tr>
             </thead>
             <tbody id="stuStockBody" class="divide-y divide-slate-200"></tbody>
@@ -171,15 +191,15 @@
       <!-- 等待蓋板 -->
       <div id="stuWaitCard" class="hidden bg-emerald-50 border border-emerald-300 text-emerald-800 p-4 rounded-xl text-center">
         <div class="font-bold text-sm">✅ 已鎖定本輪決策！</div>
-        <div class="text-xs mt-0.5">系統已傳送委託至老師主控台，請靜候進入下一輪。</div>
+        <div class="text-xs mt-0.5">系統已傳送委託至老師主控台，請等待其他同學與切換下一輪。</div>
       </div>
     </section>
 
-    <!-- 4. 第 20 輪結束：前五名大螢幕排行榜 -->
+    <!-- 4. 第 20 輪結束：前五名大螢幕排行榜（全體同步顯示） -->
     <section id="leaderboardSection" class="hidden bg-white p-6 sm:p-8 rounded-2xl shadow-xl border border-slate-200 text-center max-w-xl mx-auto">
       <div class="text-4xl mb-1">🏆</div>
       <h2 class="text-2xl font-black text-slate-900 mb-1">全班投資競賽 最終決算排行</h2>
-      <p class="text-xs text-slate-500 mb-5">所有股票已於第 20 輪強制依收盤價折現</p>
+      <p class="text-xs text-slate-500 mb-5">初始資金 100 萬，所有股票已強制依第 20 輪收盤價折現</p>
       <div class="overflow-hidden rounded-xl border border-slate-200 mb-6">
         <table class="w-full text-left text-xs sm:text-sm">
           <thead class="bg-slate-50 text-slate-500">
@@ -202,11 +222,11 @@
     // 5 檔股票與 20 輪客觀事件劇本
     // ==========================================================
     const STOCKS = {
-      A: { name: "未來晶片", basePrice: 100 },
-      B: { name: "好食光餐飲", basePrice: 50 },
-      C: { name: "遠洋航運", basePrice: 60 },
-      D: { name: "蔚藍生醫", basePrice: 80 },
-      E: { name: "綠光能源", basePrice: 40 }
+      A: { name: "未來晶片", basePrice: 100, color: "#3B82F6" },
+      B: { name: "好食光餐飲", basePrice: 50, color: "#F59E0B" },
+      C: { name: "遠洋航運", basePrice: 60, color: "#10B981" },
+      D: { name: "蔚藍生醫", basePrice: 80, color: "#8B5CF6" },
+      E: { name: "綠光能源", basePrice: 40, color: "#06B6D4" }
     };
 
     const ROUNDS_DATA = [
@@ -393,26 +413,40 @@
     ];
 
     // ==========================================================
-    // 全域變數與狀態
+    // 全域變數與歷史走勢資料
     // ==========================================================
     let peer = null;
     let isHost = false;
-    let hostConn = null; // 學生端存放對老師的連線
-    const studentConns = {}; // 老師端存放各學生的連線 { peerId: conn }
-    const studentsState = {}; // 老師端維護的全班狀態 { peerId: { name, cash, portfolio, readyRound } }
+    let hostConn = null;
+    const studentConns = {};
+    const studentsState = {};
 
     let currentRound = 1;
     let currentPrices = { A: 100, B: 50, C: 60, D: 80, E: 40 };
 
-    // 學生本地快取
+    // 儲存每輪的歷史價格，供走勢圖繪製
+    let priceHistory = {
+      labels: ["第1輪"],
+      datasets: {
+        A: [100],
+        B: [50],
+        C: [60],
+        D: [80],
+        E: [40]
+      }
+    };
+
+    let hostChartInstance = null;
+    let stuChartInstance = null;
+
+    // 學生本地快取（起始 1,000,000 元，portfolio 單位為「張」）
     let myStudentData = {
       name: "",
-      cash: 10000,
+      cash: 1000000,
       portfolio: { A: 0, B: 0, C: 0, D: 0, E: 0 },
       isLocked: false
     };
 
-    // 自動讀取 URL 帶有 room code 的參數（掃 QR Code 用）
     window.addEventListener('DOMContentLoaded', () => {
       const urlParams = new URLSearchParams(window.location.search);
       const room = urlParams.get('room');
@@ -422,16 +456,68 @@
     });
 
     // ==========================================================
+    // Chart.js 走勢圖建立與更新共用函式
+    // ==========================================================
+    function initOrUpdateChart(canvasId, isHostChart = false) {
+      const ctx = document.getElementById(canvasId).getContext('2d');
+      const chartDatasets = Object.keys(STOCKS).map(k => ({
+        label: `${STOCKS[k].name}(${k})`,
+        data: priceHistory.datasets[k],
+        borderColor: STOCKS[k].color,
+        backgroundColor: STOCKS[k].color,
+        borderWidth: 2,
+        tension: 0.2,
+        pointRadius: 3
+      }));
+
+      let chartInst = isHostChart ? hostChartInstance : stuChartInstance;
+
+      if (!chartInst) {
+        const newChart = new Chart(ctx, {
+          type: 'line',
+          data: {
+            labels: priceHistory.labels,
+            datasets: chartDatasets
+          },
+          options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            interaction: { mode: 'index', intersect: false },
+            plugins: {
+              legend: { position: 'top', labels: { boxWidth: 12, font: { size: 11 } } },
+              tooltip: {
+                callbacks: {
+                  label: function(context) {
+                    return `${context.dataset.label}: $${context.parsed.y} (張: $${(context.parsed.y * 1000).toLocaleString()})`;
+                  }
+                }
+              }
+            },
+            scales: {
+              y: { title: { display: true, text: '每股市價 (元)' } }
+            }
+          }
+        });
+        if (isHostChart) hostChartInstance = newChart;
+        else stuChartInstance = newChart;
+      } else {
+        chartInst.data.labels = priceHistory.labels;
+        Object.keys(STOCKS).forEach((k, idx) => {
+          chartInst.data.datasets[idx].data = priceHistory.datasets[k];
+        });
+        chartInst.update();
+      }
+    }
+
+    // ==========================================================
     // 老師端 (HOST) 邏輯
     // ==========================================================
     function startAsHost() {
       isHost = true;
-      // 隨機產生 4 位數英文數字房間碼
       const chars = '23456789ABCDEFGHJKLMNPQRSTUVWXYZ';
       let code = '';
       for(let i=0; i<4; i++) code += chars.charAt(Math.floor(Math.random() * chars.length));
 
-      // 使用公開 peerjs 伺服器，ID 前綴避免碰撞
       const peerId = 'STOCK-ROOM-' + code;
       peer = new Peer(peerId);
 
@@ -446,15 +532,15 @@
         document.getElementById('hostRoomCodeDisplay').innerText = code;
         document.getElementById('displayRound').innerText = currentRound;
 
-        // 產生給學生掃描加入的 QR Code
         const joinUrl = `${window.location.origin}${window.location.pathname}?room=${code}`;
         new QRCode(document.getElementById("qrcode"), {
           text: joinUrl,
-          width: 120,
-          height: 120
+          width: 110,
+          height: 110
         });
 
         renderHostStockTable();
+        initOrUpdateChart('hostChart', true);
       });
 
       peer.on('connection', (conn) => {
@@ -474,7 +560,7 @@
 
       peer.on('error', (err) => {
         if(err.type === 'unavailable-id') {
-          alert('房間碼碰撞，請重新點擊開房！');
+          alert('房間碼碰撞，請重新點擊建立！');
           location.reload();
         } else {
           console.error(err);
@@ -486,15 +572,16 @@
       if (data.type === 'JOIN') {
         studentsState[peerId] = {
           name: data.name,
-          cash: 10000,
+          cash: 1000000,
           portfolio: { A: 0, B: 0, C: 0, D: 0, E: 0 },
           readyRound: 0
         };
-        // 回覆當前輪次狀態給學生
+        // 回傳輪次、價格與走勢圖資料給該學生
         broadcastToStudent(peerId, {
           type: 'SYNC_ROUND',
           round: currentRound,
           prices: currentPrices,
+          priceHistory: priceHistory,
           cash: studentsState[peerId].cash,
           portfolio: studentsState[peerId].portfolio
         });
@@ -553,10 +640,13 @@
         const rate = rates[k] || 0;
         const rateText = rate >= 0 ? `+${(rate * 100).toFixed(0)}%` : `${(rate * 100).toFixed(0)}%`;
         const rateColor = rate >= 0 ? 'text-rose-600 font-bold' : 'text-emerald-600 font-bold';
+        const sheetPrice = (currentPrices[k] * 1000).toLocaleString();
+
         const tr = document.createElement('tr');
         tr.innerHTML = `
           <td class="p-2.5 font-semibold">${STOCKS[k].name} (${k})</td>
           <td class="p-2.5 font-bold text-slate-900">$${currentPrices[k].toFixed(1)}</td>
+          <td class="p-2.5 font-bold text-indigo-700">$${sheetPrice}</td>
           <td class="p-2.5 ${rateColor}">${rateText}</td>
         `;
         tbody.appendChild(tr);
@@ -564,86 +654,72 @@
     }
 
     function hostNextRound() {
-      if (!confirm(`確定要推進至下一輪嗎？未下單同學將自動維持既有現金與持股。`)) return;
+      if (!confirm(`確定要推進至下一輪嗎？未下單同學將自動維持既有持股與現金。`)) return;
 
       const roundIdx = currentRound - 1;
       const rates = ROUNDS_DATA[roundIdx].rates;
 
-      // 1. 計算新價格
+      // 1. 計算新價格並紀錄至走勢圖
       for (let k in currentPrices) {
         const changeRate = rates[k] || 0;
         currentPrices[k] = Math.max(1, +(currentPrices[k] * (1 + changeRate)).toFixed(1));
+        priceHistory.datasets[k].push(currentPrices[k]);
       }
 
-      // 2. 判斷是否結束第 20 輪
+      // 2. 判斷是否第 20 輪結束
       if (currentRound >= 20) {
-        // 結算大螢幕
-        triggerLeaderboard();
+        const rankings = calculateRankings();
+        renderLeaderboardUI(rankings);
+        // 同步廣播結算資料給所有學生端
         broadcastToAll({
           type: 'GAME_OVER',
-          prices: currentPrices
+          prices: currentPrices,
+          rankings: rankings
         });
         return;
       }
 
       currentRound += 1;
+      priceHistory.labels.push(`第${currentRound}輪`);
+
       document.getElementById('displayRound').innerText = currentRound;
       renderHostStockTable();
       renderHostDashboard();
+      initOrUpdateChart('hostChart', true);
 
-      // 通知所有學生進入下一輪
+      // 通知全體學生更新輪數與歷史走勢
       for (let peerId in studentConns) {
         const s = studentsState[peerId];
         broadcastToStudent(peerId, {
           type: 'SYNC_ROUND',
           round: currentRound,
           prices: currentPrices,
+          priceHistory: priceHistory,
           cash: s.cash,
           portfolio: s.portfolio
         });
       }
     }
 
-    function triggerLeaderboard() {
-      document.getElementById('hostSection').classList.add('hidden');
-      document.getElementById('studentSection').classList.add('hidden');
-      document.getElementById('leaderboardSection').classList.remove('hidden');
-
-      const rankings = [];
+    function calculateRankings() {
+      const list = [];
       for (let k in studentsState) {
         const s = studentsState[k];
-        let stockNet = 0;
+        let stockVal = 0;
         for (let symbol in s.portfolio) {
-          stockNet += (s.portfolio[symbol] || 0) * currentPrices[symbol];
+          // 1 張 = 1000 股
+          stockVal += (s.portfolio[symbol] || 0) * (currentPrices[symbol] * 1000);
         }
-        const total = s.cash + stockNet;
-        const profitRate = ((total - 10000) / 10000) * 100;
-        rankings.push({
+        const total = s.cash + stockVal;
+        const profitRate = ((total - 1000000) / 1000000) * 100;
+        list.push({
           name: s.name,
           net: Math.round(total),
           rate: profitRate.toFixed(1)
         });
       }
-
-      rankings.sort((a, b) => b.net - a.net);
-      const top5 = rankings.slice(0, 5);
-      const medals = ['🥇 第一名', '🥈 第二名', '🥉 第三名', '第 4 名', '第 5 名'];
-
-      const tbody = document.getElementById('leaderboardBody');
-      tbody.innerHTML = '';
-      top5.forEach((item, idx) => {
-        const tr = document.createElement('tr');
-        tr.className = idx < 3 ? 'bg-amber-50/70 font-semibold' : '';
-        tr.innerHTML = `
-          <td class="p-2.5 text-center">${medals[idx]}</td>
-          <td class="p-2.5 font-bold">${item.name}</td>
-          <td class="p-2.5 text-right font-black text-indigo-700">$${item.net.toLocaleString()}</td>
-          <td class="p-2.5 text-right font-bold ${item.rate >= 0 ? 'text-rose-600' : 'text-emerald-600'}">
-            ${item.rate >= 0 ? '+' : ''}${item.rate}%
-          </td>
-        `;
-        tbody.appendChild(tr);
-      });
+      list.sort((a, b) => b.net - a.net);
+      return list.slice(0, 5);
     }
 
     // ==========================================================
@@ -657,14 +733,13 @@
       if (!name) return alert('請輸入您的姓名或座號！');
 
       myStudentData.name = name;
-      peer = new Peer(); // 學生端隨機 ID 即可
+      peer = new Peer();
 
       peer.on('open', () => {
         const targetHostId = 'STOCK-ROOM-' + code;
         hostConn = peer.connect(targetHostId);
 
         hostConn.on('open', () => {
-          // 通知老師端加入
           hostConn.send({ type: 'JOIN', name: name });
 
           document.getElementById('entrySection').classList.add('hidden');
@@ -681,7 +756,7 @@
         });
 
         hostConn.on('close', () => {
-          alert('與老師主機的連線已中斷。');
+          alert('與老師主控台的連線已中斷。');
         });
       });
 
@@ -695,26 +770,26 @@
       if (data.type === 'SYNC_ROUND') {
         currentRound = data.round;
         currentPrices = data.prices;
+        priceHistory = data.priceHistory;
         myStudentData.cash = data.cash;
         myStudentData.portfolio = data.portfolio;
         myStudentData.isLocked = false;
 
         document.getElementById('displayRound').innerText = currentRound;
         renderStudentUI();
+        initOrUpdateChart('stuChart', false);
       } else if (data.type === 'GAME_OVER') {
-        currentPrices = data.prices;
-        // 遊戲結束畫面
-        document.getElementById('studentSection').classList.add('hidden');
-        document.getElementById('leaderboardSection').classList.remove('hidden');
+        // 學生端同步顯示結算排行榜
+        renderLeaderboardUI(data.rankings);
       }
     }
 
     function renderStudentUI() {
-      // 1. 資產數字
+      // 1. 資產顯示（1張 = 1,000股）
       document.getElementById('stuCash').innerText = `$${Math.round(myStudentData.cash).toLocaleString()}`;
       let stockVal = 0;
       for (let k in myStudentData.portfolio) {
-        stockVal += (myStudentData.portfolio[k] || 0) * currentPrices[k];
+        stockVal += (myStudentData.portfolio[k] || 0) * (currentPrices[k] * 1000);
       }
       document.getElementById('stuStockVal').innerText = `$${Math.round(stockVal).toLocaleString()}`;
       document.getElementById('stuTotalNet').innerText = `$${Math.round(myStudentData.cash + stockVal).toLocaleString()}`;
@@ -731,19 +806,22 @@
         newsBox.appendChild(p);
       }
 
-      // 3. 下單列表
+      // 3. 下單列表 (以張為單位)
       const tbody = document.getElementById('stuStockBody');
       tbody.innerHTML = '';
       const isLocked = myStudentData.isLocked;
 
       for (let k in STOCKS) {
         const price = currentPrices[k];
-        const holding = myStudentData.portfolio[k] || 0;
+        const sheetPrice = (price * 1000).toLocaleString();
+        const holdingSheets = myStudentData.portfolio[k] || 0;
+
         const tr = document.createElement('tr');
         tr.innerHTML = `
           <td class="p-2.5 font-semibold text-slate-800">${STOCKS[k].name}</td>
           <td class="p-2.5 font-bold text-slate-900">$${price.toFixed(1)}</td>
-          <td class="p-2.5 font-medium text-slate-600">${holding} 股</td>
+          <td class="p-2.5 font-bold text-indigo-700">$${sheetPrice}</td>
+          <td class="p-2.5 font-medium text-slate-600">${holdingSheets} 張</td>
           <td class="p-2.5">
             <select id="act_${k}" ${isLocked ? 'disabled' : ''} class="border border-slate-300 rounded px-1.5 py-1 text-xs">
               <option value="HOLD">維持</option>
@@ -752,13 +830,13 @@
             </select>
           </td>
           <td class="p-2.5">
-            <input type="number" id="qty_${k}" min="0" value="0" ${isLocked ? 'disabled' : ''} class="w-16 sm:w-20 border border-slate-300 rounded px-1.5 py-1 text-xs" />
+            <input type="number" id="qty_${k}" min="0" value="0" ${isLocked ? 'disabled' : ''} class="w-16 sm:w-20 border border-slate-300 rounded px-1.5 py-1 text-xs" placeholder="張數" />
           </td>
         `;
         tbody.appendChild(tr);
       }
 
-      // 狀態提示
+      // 鎖定狀態控制
       const submitBtn = document.getElementById('stuSubmitBtn');
       const waitCard = document.getElementById('stuWaitCard');
       const pill = document.getElementById('stuStatusPill');
@@ -782,34 +860,34 @@
       let tempCash = myStudentData.cash;
       const tempPortfolio = { ...myStudentData.portfolio };
 
-      // 檢查現金與庫存
+      // 檢查現金與庫存（以「張」換算）
       for (let k in STOCKS) {
         const act = document.getElementById(`act_${k}`).value;
-        const qty = parseInt(document.getElementById(`qty_${k}`).value) || 0;
-        const price = currentPrices[k];
+        const sheets = parseInt(document.getElementById(`qty_${k}`).value) || 0;
+        const sheetCost = currentPrices[k] * 1000;
 
-        if (act === 'BUY' && qty > 0) {
-          const cost = qty * price;
-          if (tempCash < cost) {
-            return alert(`資金不足！買入 ${qty} 股 ${STOCKS[k].name} 需要 $${Math.round(cost)}，目前可用現金僅剩 $${Math.round(tempCash)}`);
+        if (act === 'BUY' && sheets > 0) {
+          const totalCost = sheets * sheetCost;
+          if (tempCash < totalCost) {
+            return alert(`資金不足！買入 ${sheets} 張 ${STOCKS[k].name} 需要 $${Math.round(totalCost).toLocaleString()}，可用現金僅剩 $${Math.round(tempCash).toLocaleString()}`);
           }
-          tempCash -= cost;
-          tempPortfolio[k] = (tempPortfolio[k] || 0) + qty;
-        } else if (act === 'SELL' && qty > 0) {
-          const cur = tempPortfolio[k] || 0;
-          if (qty > cur) {
-            return alert(`庫存不足！您僅持有 ${cur} 股 ${STOCKS[k].name}，無法賣出 ${qty} 股`);
+          tempCash -= totalCost;
+          tempPortfolio[k] = (tempPortfolio[k] || 0) + sheets;
+        } else if (act === 'SELL' && sheets > 0) {
+          const curSheets = tempPortfolio[k] || 0;
+          if (sheets > curSheets) {
+            return alert(`庫存不足！您僅持有 ${curSheets} 張 ${STOCKS[k].name}，無法賣出 ${sheets} 張`);
           }
-          tempCash += qty * price;
-          tempPortfolio[k] = cur - qty;
+          tempCash += sheets * sheetCost;
+          tempPortfolio[k] = curSheets - sheets;
         }
       }
 
-      // 更新本地並回傳給老師端
       myStudentData.cash = tempCash;
       myStudentData.portfolio = tempPortfolio;
       myStudentData.isLocked = true;
 
+      // 回傳給老師主機
       hostConn.send({
         type: 'SUBMIT_ORDER',
         cash: tempCash,
@@ -817,6 +895,33 @@
       });
 
       renderStudentUI();
+    }
+
+    // ==========================================================
+    // 結算大螢幕 UI 渲染共用函式（老師端與學生端同步調用）
+    // ==========================================================
+    function renderLeaderboardUI(rankings) {
+      document.getElementById('hostSection').classList.add('hidden');
+      document.getElementById('studentSection').classList.add('hidden');
+      document.getElementById('leaderboardSection').classList.remove('hidden');
+
+      const medals = ['🥇 第一名', '🥈 第二名', '🥉 第三名', '第 4 名', '第 5 名'];
+      const tbody = document.getElementById('leaderboardBody');
+      tbody.innerHTML = '';
+
+      rankings.forEach((item, idx) => {
+        const tr = document.createElement('tr');
+        tr.className = idx < 3 ? 'bg-amber-50/70 font-semibold' : '';
+        tr.innerHTML = `
+          <td class="p-2.5 text-center">${medals[idx] || (idx + 1)}</td>
+          <td class="p-2.5 font-bold">${item.name}</td>
+          <td class="p-2.5 text-right font-black text-indigo-700">$${item.net.toLocaleString()}</td>
+          <td class="p-2.5 text-right font-bold ${item.rate >= 0 ? 'text-rose-600' : 'text-emerald-600'}">
+            ${item.rate >= 0 ? '+' : ''}${item.rate}%
+          </td>
+        `;
+        tbody.appendChild(tr);
+      });
     }
   </script>
 </body>
