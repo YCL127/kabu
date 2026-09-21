@@ -1,0 +1,823 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>班級投資模擬遊戲 (P2P免後端版)</title>
+  <!-- Tailwind CSS CDN -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <!-- PeerJS 免費公開 P2P 連線庫 -->
+  <script src="https://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js"></script>
+  <!-- QR Code 產生庫（方便學生手機掃描連線） -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+  <style>
+    .glass-box { background: rgba(255, 255, 255, 0.96); }
+  </style>
+</head>
+<body class="bg-slate-100 min-h-screen text-slate-800 font-sans">
+
+  <!-- 頂部導覽列 -->
+  <header class="bg-slate-900 text-white shadow sticky top-0 z-50">
+    <div class="max-w-6xl mx-auto px-4 py-3 flex justify-between items-center">
+      <div class="flex items-center space-x-3">
+        <span class="text-lg font-bold tracking-wide">📈 班級商業投資模擬</span>
+        <span id="roleBadge" class="text-xs px-2.5 py-0.5 rounded-full font-semibold bg-slate-700 text-slate-200">未連線</span>
+      </div>
+      <div id="roomInfo" class="hidden text-sm bg-slate-800 px-3 py-1 rounded-md border border-slate-700 flex items-center space-x-3">
+        <span>房間代碼：<strong id="displayRoomCode" class="text-amber-400 text-base tracking-widest">----</strong></span>
+        <span>輪數：<strong id="displayRound" class="text-emerald-400">1</strong> / 20</span>
+      </div>
+    </div>
+  </header>
+
+  <main class="max-w-5xl mx-auto p-4 sm:p-6">
+    <!-- 1. 入口身分選擇區塊 -->
+    <section id="entrySection" class="max-w-md mx-auto mt-10 glass-box p-6 rounded-2xl shadow-xl border border-slate-200">
+      <h2 class="text-xl font-black text-center mb-1 text-slate-800">歡迎進入投資模擬市場</h2>
+      <p class="text-xs text-slate-500 text-center mb-6">全免後端 P2P 模式，由老師主機直連學生端</p>
+
+      <div class="space-y-4">
+        <!-- 學生加入 -->
+        <div class="p-4 bg-slate-50 rounded-xl border border-slate-200">
+          <h3 class="font-bold text-sm text-indigo-700 mb-2">我是學生（加入遊戲）</h3>
+          <div class="space-y-2">
+            <input type="text" id="inputRoomCode" placeholder="請輸入4位房間代碼 (例如 8842)" maxlength="4" class="w-full px-3 py-2 text-center tracking-widest font-black uppercase text-lg border rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none" />
+            <input type="text" id="inputStudentName" placeholder="請輸入座號與姓名 (例如 05 王小明)" class="w-full px-3 py-2 text-sm border rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none" />
+            <button onclick="joinAsStudent()" class="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-2 rounded-lg transition shadow text-sm">連線進入教室</button>
+          </div>
+        </div>
+
+        <div class="relative flex py-2 items-center">
+          <div class="flex-grow border-t border-slate-300"></div>
+          <span class="flex-shrink mx-4 text-xs text-slate-400">或</span>
+          <div class="flex-grow border-t border-slate-300"></div>
+        </div>
+
+        <!-- 老師開房 -->
+        <button onclick="startAsHost()" class="w-full bg-slate-800 hover:bg-slate-900 text-white font-bold py-3 rounded-xl shadow transition text-sm flex items-center justify-center space-x-2">
+          <span>我是老師，建立新房間 (Host)</span>
+        </button>
+      </div>
+    </section>
+
+    <!-- 2. 老師主控台 -->
+    <section id="hostSection" class="hidden space-y-6">
+      <div class="bg-white p-6 rounded-2xl shadow border border-slate-200 flex flex-col md:flex-row justify-between items-center gap-4">
+        <div>
+          <h2 class="text-xl font-black text-slate-900">老師端主控面板</h2>
+          <p class="text-xs text-slate-500">投影此大螢幕讓學生看代碼連線，每輪結束點擊結算切換。</p>
+        </div>
+        <div class="flex items-center space-x-3">
+          <button onclick="hostNextRound()" class="px-6 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-xl shadow transition text-sm">
+            結算並進入下一輪 (Next)
+          </button>
+        </div>
+      </div>
+
+      <!-- 連線指引與 QR Code 投影區 -->
+      <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <div class="bg-white p-4 rounded-xl border border-slate-200 flex flex-col items-center justify-center text-center">
+          <div class="text-xs text-slate-500 mb-1">房間連線代碼</div>
+          <div id="hostRoomCodeDisplay" class="text-4xl font-black tracking-widest text-indigo-600">----</div>
+          <div id="qrcode" class="mt-3"></div>
+          <div class="text-[10px] text-slate-400 mt-2">手機掃描或輸入代碼皆可加入</div>
+        </div>
+
+        <div class="bg-white p-4 rounded-xl border border-slate-200 md:col-span-2">
+          <div class="flex justify-between items-center mb-2">
+            <span class="text-xs font-bold text-slate-600">全班下單繳交進度</span>
+            <span id="hostProgressCount" class="text-sm font-bold text-indigo-600">0 / 0 人已完成</span>
+          </div>
+          <div class="w-full bg-slate-100 h-2.5 rounded-full overflow-hidden mb-4">
+            <div id="hostProgressBar" class="bg-indigo-600 h-full w-0 transition-all duration-300"></div>
+          </div>
+          <div class="text-xs font-semibold text-slate-500 mb-1">學生即時名冊：</div>
+          <div id="hostStudentRoster" class="flex flex-wrap gap-2 max-h-36 overflow-y-auto"></div>
+        </div>
+      </div>
+
+      <!-- 老師端行情即時總表 -->
+      <div class="bg-white rounded-xl shadow border border-slate-200 overflow-hidden">
+        <div class="p-3 bg-slate-50 border-b border-slate-200 font-bold text-xs text-slate-700">各檔股票當前現價與即將結算變動率</div>
+        <table class="w-full text-left text-xs">
+          <thead class="bg-slate-100 text-slate-500 uppercase">
+            <tr>
+              <th class="p-2.5">代號 / 名稱</th>
+              <th class="p-2.5">當前基準價</th>
+              <th class="p-2.5">本輪事件隱含漲跌</th>
+            </tr>
+          </thead>
+          <tbody id="hostStockBody" class="divide-y divide-slate-200"></tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- 3. 學生操作介面 -->
+    <section id="studentSection" class="hidden space-y-5">
+      <!-- 資產資訊 -->
+      <div class="grid grid-cols-2 sm:grid-cols-4 gap-3">
+        <div class="bg-white p-3 rounded-xl border border-slate-200 shadow-sm">
+          <div class="text-[11px] text-slate-400 font-medium">投資人姓名</div>
+          <div id="stuPlayerName" class="text-base font-bold text-slate-800 truncate">--</div>
+        </div>
+        <div class="bg-white p-3 rounded-xl border border-slate-200 shadow-sm">
+          <div class="text-[11px] text-slate-400 font-medium">可用現金</div>
+          <div id="stuCash" class="text-base font-bold text-emerald-600">$10,000</div>
+        </div>
+        <div class="bg-white p-3 rounded-xl border border-slate-200 shadow-sm">
+          <div class="text-[11px] text-slate-400 font-medium">股票現值</div>
+          <div id="stuStockVal" class="text-base font-bold text-indigo-600">$0</div>
+        </div>
+        <div class="bg-white p-3 rounded-xl border border-slate-200 shadow-sm">
+          <div class="text-[11px] text-slate-400 font-medium">總資產淨值</div>
+          <div id="stuTotalNet" class="text-base font-bold text-amber-600">$10,000</div>
+        </div>
+      </div>
+
+      <!-- 市場客觀資訊動態 -->
+      <div class="bg-amber-50 border-l-4 border-amber-500 p-3 rounded-r-xl">
+        <div class="text-xs font-bold text-amber-900 mb-1.5">📰 本輪市場各產業客觀事件：</div>
+        <div id="stuNewsBox" class="space-y-1 text-xs text-slate-700"></div>
+      </div>
+
+      <!-- 交易下單專區 -->
+      <div class="bg-white rounded-xl shadow border border-slate-200 overflow-hidden">
+        <div class="p-3 bg-slate-50 border-b border-slate-200 flex justify-between items-center">
+          <span class="text-xs font-bold text-slate-700">交易操作面板</span>
+          <span id="stuStatusPill" class="text-[11px] px-2 py-0.5 rounded font-semibold bg-blue-100 text-blue-700">思考中</span>
+        </div>
+        <div class="overflow-x-auto">
+          <table class="w-full text-left text-xs border-collapse">
+            <thead class="bg-slate-100 text-slate-500 uppercase">
+              <tr>
+                <th class="p-2.5">股票</th>
+                <th class="p-2.5">現價</th>
+                <th class="p-2.5">持股</th>
+                <th class="p-2.5">動作</th>
+                <th class="p-2.5">股數</th>
+              </tr>
+            </thead>
+            <tbody id="stuStockBody" class="divide-y divide-slate-200"></tbody>
+          </table>
+        </div>
+        <div class="p-3 bg-slate-50 border-t border-slate-200 flex flex-col sm:flex-row justify-between items-center gap-3">
+          <div class="text-[11px] text-slate-400">鎖定送出後不可修改，靜候老師切換下一輪。</div>
+          <button id="stuSubmitBtn" onclick="stuSubmitOrders()" class="w-full sm:w-auto px-6 py-2 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-lg text-xs shadow transition">
+            鎖定並送出本輪委託
+          </button>
+        </div>
+      </div>
+
+      <!-- 等待蓋板 -->
+      <div id="stuWaitCard" class="hidden bg-emerald-50 border border-emerald-300 text-emerald-800 p-4 rounded-xl text-center">
+        <div class="font-bold text-sm">✅ 已鎖定本輪決策！</div>
+        <div class="text-xs mt-0.5">系統已傳送委託至老師主控台，請靜候進入下一輪。</div>
+      </div>
+    </section>
+
+    <!-- 4. 第 20 輪結束：前五名大螢幕排行榜 -->
+    <section id="leaderboardSection" class="hidden bg-white p-6 sm:p-8 rounded-2xl shadow-xl border border-slate-200 text-center max-w-xl mx-auto">
+      <div class="text-4xl mb-1">🏆</div>
+      <h2 class="text-2xl font-black text-slate-900 mb-1">全班投資競賽 最終決算排行</h2>
+      <p class="text-xs text-slate-500 mb-5">所有股票已於第 20 輪強制依收盤價折現</p>
+      <div class="overflow-hidden rounded-xl border border-slate-200 mb-6">
+        <table class="w-full text-left text-xs sm:text-sm">
+          <thead class="bg-slate-50 text-slate-500">
+            <tr>
+              <th class="p-2.5 text-center">排名</th>
+              <th class="p-2.5">姓名</th>
+              <th class="p-2.5 text-right">最終資產</th>
+              <th class="p-2.5 text-right">總報酬率</th>
+            </tr>
+          </thead>
+          <tbody id="leaderboardBody" class="divide-y divide-slate-200"></tbody>
+        </table>
+      </div>
+      <button onclick="location.reload()" class="px-5 py-2 bg-slate-800 text-white rounded-lg text-xs font-semibold">回首頁重新開始</button>
+    </section>
+  </main>
+
+  <script>
+    // ==========================================================
+    // 5 檔股票與 20 輪客觀事件劇本
+    // ==========================================================
+    const STOCKS = {
+      A: { name: "未來晶片", basePrice: 100 },
+      B: { name: "好食光餐飲", basePrice: 50 },
+      C: { name: "遠洋航運", basePrice: 60 },
+      D: { name: "蔚藍生醫", basePrice: 80 },
+      E: { name: "綠光能源", basePrice: 40 }
+    };
+
+    const ROUNDS_DATA = [
+      { round: 1, rates: { A: 0.12, B: 0.06, C: 0.15, D: 0.04, E: 0.08 },
+        news: {
+          A: "國際大廠發表全新生成式 AI 模型，算力需求翻倍。",
+          B: "國內禽流感疫情趨緩，生鮮蛋肉供應量全面恢復正常。",
+          C: "國際主要運河因氣候乾旱，每日船舶通行名額縮減 30%。",
+          D: "新型阿茲海默症候選藥物獲得主管機關進入二期臨床許可。",
+          E: "多個縣市宣布夏季提前實施高階用電大戶差別費率。"
+        }
+      },
+      { round: 2, rates: { A: -0.08, B: 0.07, C: -0.10, D: -0.05, E: 0.11 },
+        news: {
+          A: "公司宣布斥資千億啟動新廠擴建，預計提列大量折舊。",
+          B: "連鎖分店正式導入自助點餐機與送餐機器人。",
+          C: "國際原油價格連續兩週大幅走高。",
+          D: "公布去年第四季財報，研發費用支出佔營收達 45%。",
+          E: "大型工業園區簽署 10 年期綠電直供長約採購案。"
+        }
+      },
+      { round: 3, rates: { A: 0.14, B: -0.09, C: 0.08, D: -0.08, E: -0.04 },
+        news: {
+          A: "接獲海外超級伺服器客戶追加 20% 先進製程訂單。",
+          B: "知名網紅發文質疑某分店招牌炸雞肉質疑似未熟。",
+          C: "各國港口出現空貨櫃堆積滯留，貨輪裝載週轉天數拉長。",
+          D: "現行主力退燒消炎成藥專利權正式到期，面臨學名藥競爭。",
+          E: "連續一週全台陰雨多雲，部分地面型太陽能發電量偏低。"
+        }
+      },
+      { round: 4, rates: { A: -0.07, B: 0.08, C: -0.03, D: 0.18, E: 0.10 },
+        news: {
+          A: "新購置的先進曝光機設備在交貨運送過程中發生碰撞延遲。",
+          B: "官方送檢報告出爐，微生物指標完全合格，並推買一送一活動。",
+          C: "宣布訂造 4 艘超大型環保甲醇動力雙燃料貨櫃船。",
+          D: "國際醫藥巨頭向蔚藍生醫提出合併收購初步意向書。",
+          E: "政府推動工廠屋頂太陽能強制建置法案正式三讀通過。"
+        }
+      },
+      { round: 5, rates: { A: -0.11, B: 0.10, C: 0.12, D: -0.12, E: -0.07 },
+        news: {
+          A: "競爭對手宣布突破同級製程技術，報價低 15%搶單。",
+          B: "夏季高溫帶動旗下飲品與冰品系列銷售量突破歷史單月新高。",
+          C: "全球電子製造業進入傳統鋪貨旺季，急件空轉海運需求升溫。",
+          D: "董事會正式回絕國際巨頭的收購提議，強調將獨立研發。",
+          E: "關鍵儲能鋰電池原物料價格於國際期貨市場飆升 25%。"
+        }
+      },
+      { round: 6, rates: { A: 0.09, B: -0.06, C: -0.05, D: 0.05, E: -0.06 },
+        news: {
+          A: "成功申請下一代 3D 封裝專利，良率測試超越業界均值。",
+          B: "中央氣象署預報強烈颱風將於本週末登陸並影響全台 3 天。",
+          C: "重要航道傳出區域武裝衝突，國際保險公司調漲戰險保費。",
+          D: "二期臨床試驗完成所有受試者收案，進入期中數據分析盲測。",
+          E: "風災後部分露天太陽能電廠傳出支架與模組輕微受損回報。"
+        }
+      },
+      { round: 7, rates: { A: -0.10, B: -0.08, C: 0.16, D: 0.08, E: 0.13 },
+        news: {
+          A: "大客戶宣布其終端消費性電子新機銷量不如市場預期。",
+          B: "颱風過後蔬菜批發價格連續兩週飆漲 40%。",
+          C: "因航道繞道好望角，航程延長 14 天，市場可用有效艙位驟減。",
+          D: "受試者未出現嚴重不良反應報告，盲測初步安全性指標合格。",
+          E: "台電宣布啟動千億電網強韌計畫，加強採購分散式儲能設備。"
+        }
+      },
+      { round: 8, rates: { A: 0.11, B: 0.06, C: 0.14, D: 0.10, E: 0.08 },
+        news: {
+          A: "宣布打入兩家頂級電動車供應鏈，成為智慧座艙核心晶片供應商。",
+          B: "推出全植物肉健康新品牌，首波上市試吃排隊踴躍。",
+          C: "航運同盟宣布下個月全面加徵綜合費率附加費 (GRI)。",
+          D: "知名醫學期刊刊登公司新藥機制論文，引發學術關注。",
+          E: "新型高效能鈣鈦礦太陽能電池研發團隊宣布量產轉換效率提升。"
+        }
+      },
+      { round: 9, rates: { A: -0.08, B: -0.02, C: -0.04, D: 0.04, E: 0.12 },
+        news: {
+          A: "全球半導體上游特殊化學氣體工廠發生火警，供應短暫告急。",
+          B: "因應食材物價，宣布調漲全品項餐點售價 5~8%。",
+          C: "港口工人針對工時與薪資協議展開為期 48 小時象徵性罷工。",
+          D: "公司向多國智財局擴大申請系列衍生化合物保護壁壘。",
+          E: "國營事業釋出大型地面光電標案，由綠光能源等聯盟得標。"
+        }
+      },
+      { round: 10, rates: { A: 0.10, B: 0.09, C: -0.06, D: -0.25, E: -0.08 },
+        news: {
+          A: "備用化學氣體庫存順利接軌，新廠第一期正式通電試車。",
+          B: "漲價後翻桌率不降反升，會員 APP 活躍用戶數突破 200 萬人。",
+          C: "罷工迅速達成協議落幕，各航線船舶開始加速清關疏運。",
+          D: "阿茲海默新藥二期解盲數據正式公布：主要療效指標未達顯著標準。",
+          E: "宣布辦理現金增資 20 億元以因應新標案工程週轉。"
+        }
+      },
+      { round: 11, rates: { A: -0.14, B: 0.07, C: -0.08, D: 0.03, E: 0.09 },
+        news: {
+          A: "國際地緣貿易限制升級，部分特定運算晶片禁止銷往特定區域。",
+          B: "宣布進軍海外華人市場，首批海外加盟店簽約 10 家。",
+          C: "國際航運監管組織研擬開徵航行碳排放稅。",
+          D: "新執行長上任，宣布縮編組織並聚焦罕見疾病特定族群利基市場。",
+          E: "大型科技園區全面啟用綠光能源建置的第一期大型儲能微電網。"
+        }
+      },
+      { round: 12, rates: { A: 0.13, B: 0.08, C: -0.11, D: 0.15, E: -0.05 },
+        news: {
+          A: "推出符合新規範的低功耗合規特規版晶片，並獲大客戶採納。",
+          B: "海外首家旗艦店開幕當天人潮大排長龍，登上當地媒體。",
+          C: "全球主要製造業採購經理人指數 (PMI) 連續三個月收縮回落。",
+          D: "罕見疾病專利藥獲美國 FDA 孤兒藥資格認定 (Fast Track)。",
+          E: "主要競爭同業發生儲能櫃散熱不良火警，全行業展開安全特檢。"
+        }
+      },
+      { round: 13, rates: { A: 0.15, B: -0.04, C: 0.09, D: 0.06, E: 0.08 },
+        news: {
+          A: "多家雲端巨頭宣布上修年度資料中心 AI 伺服器資本支出。",
+          B: "國內勞動法規調漲基本工資，時薪與月薪底薪雙雙上調 5%。",
+          C: "燃油期貨價格跌至近兩年低點。",
+          D: "獲得國家級生醫發展基金入股支持，持股比例達 5%。",
+          E: "全行業儲能安全審查通過，公司因散熱標準高於同業獲政府推薦。"
+        }
+      },
+      { round: 14, rates: { A: 0.10, B: 0.08, C: -0.09, D: 0.07, E: 0.10 },
+        news: {
+          A: "新廠正式進入量產階段，初期良率已達 78%。",
+          B: "加盟展現場與多組加盟主簽約，預計年底前展店 30 家。",
+          C: "數艘前兩年訂造的新造巨型貨輪正式交付下水，投入營運。",
+          D: "罕病新藥進入三期臨床，第一批病患正式開始投藥。",
+          E: "國際太陽能晶圓多晶矽產能過剩，模組採購成本下降 15%。"
+        }
+      },
+      { round: 15, rates: { A: -0.12, B: -0.05, C: 0.08, D: -0.06, E: -0.03 },
+        news: {
+          A: "國際駭客集團宣稱掌握晶片部分未公開架構程式碼。",
+          B: "某加盟店因員工操作不當，於社群平台引發衛生管理討論。",
+          C: "歐美零售通路進入年末感恩節與黑五備貨高峰，訂艙率達 95%。",
+          D: "委外代工藥廠無預警發生設備維修停工，藥品交付遞延一個月。",
+          E: "夏季用電高峰結束，進入秋季例行性用電平水期。"
+        }
+      },
+      { round: 16, rates: { A: 0.09, B: 0.04, C: -0.08, D: 0.05, E: 0.07 },
+        news: {
+          A: "經獨立第三方資安鑑識，核心專利架構未受任何侵入與外洩。",
+          B: "總部宣布收回違規加盟店經營權，並全面推行雲端稽核系統。",
+          C: "全球零售商庫存堆積，預期黑五補貨力道將低於原先推估。",
+          D: "更換大型合規代工藥廠，產能恢復並追上預定試驗進度。",
+          E: "政府公布第二期淨零減碳目標，調高企業自建綠電抵稅比例。"
+        }
+      },
+      { round: 17, rates: { A: 0.13, B: 0.09, C: -0.15, D: 0.08, E: 0.11 },
+        news: {
+          A: "發布下一代架構技術白皮書，運算能效比現行產品提高 40%。",
+          B: "年菜外帶與尾牙包場預約訂位率於開放首週達到 85%。",
+          C: "國際紅海航道安全協議達成，各國船隻開始評估恢復常態通航。",
+          D: "三期臨床試驗在多國醫學中心進展順利，未通報嚴重毒性個案。",
+          E: "多個大型太陽能發電案場正式併網發電，開始產生售電收入。"
+        }
+      },
+      { round: 18, rates: { A: 0.08, B: 0.07, C: -0.12, D: 0.28, E: 0.08 },
+        news: {
+          A: "主要記憶體合作廠商宣布降價，晶片組整體整機成本下滑。",
+          B: "主要食用油與包材供應商通知下月起報價調降 8%。",
+          C: "運價全面回落至疫情前常態水準，業界掀起削價搶客。",
+          D: "三期數據期末結算：罕見疾病主要療效指標達到統計學顯著意義！",
+          E: "宣布結盟國際儲能大廠，搶進東南亞各國海島離網微電網市場。"
+        }
+      },
+      { round: 19, rates: { A: 0.14, B: 0.08, C: 0.03, D: 0.12, E: -0.06 },
+        news: {
+          A: "國際消費性電子展 (CES) 上，90% 新世代終端設備採用該架構。",
+          B: "董事會通過配發歷史新高的現金股利政策，配息率達 70%。",
+          C: "宣布啟動老舊高耗能船隻拆解淘汰計畫，減少非必要折舊。",
+          D: "向多國藥監單位正式遞交新藥上市許可申請 (NDA)。",
+          E: "部分環保團體抗議農電共生與林地開發問題，引發公共聽證會。"
+        }
+      },
+      { round: 20, rates: { A: 0.12, B: 0.07, C: -0.02, D: 0.20, E: 0.09 },
+        news: {
+          A: "公布全年自結財報，全年每股盈餘 (EPS) 創下創立以來歷史新高。",
+          B: "春節連假全台門市總客流量刷新歷史同期紀錄。",
+          C: "國際海運同盟重新洗牌，航線整併進入觀望僵持期。",
+          D: "新藥正式獲得美國 FDA 優先核准上市許可，並簽訂全球授權合約。",
+          E: "聽證會達成環境共榮指引共識，首季綠電發電總量創歷年同期新高。"
+        }
+      }
+    ];
+
+    // ==========================================================
+    // 全域變數與狀態
+    // ==========================================================
+    let peer = null;
+    let isHost = false;
+    let hostConn = null; // 學生端存放對老師的連線
+    const studentConns = {}; // 老師端存放各學生的連線 { peerId: conn }
+    const studentsState = {}; // 老師端維護的全班狀態 { peerId: { name, cash, portfolio, readyRound } }
+
+    let currentRound = 1;
+    let currentPrices = { A: 100, B: 50, C: 60, D: 80, E: 40 };
+
+    // 學生本地快取
+    let myStudentData = {
+      name: "",
+      cash: 10000,
+      portfolio: { A: 0, B: 0, C: 0, D: 0, E: 0 },
+      isLocked: false
+    };
+
+    // 自動讀取 URL 帶有 room code 的參數（掃 QR Code 用）
+    window.addEventListener('DOMContentLoaded', () => {
+      const urlParams = new URLSearchParams(window.location.search);
+      const room = urlParams.get('room');
+      if (room) {
+        document.getElementById('inputRoomCode').value = room.toUpperCase();
+      }
+    });
+
+    // ==========================================================
+    // 老師端 (HOST) 邏輯
+    // ==========================================================
+    function startAsHost() {
+      isHost = true;
+      // 隨機產生 4 位數英文數字房間碼
+      const chars = '23456789ABCDEFGHJKLMNPQRSTUVWXYZ';
+      let code = '';
+      for(let i=0; i<4; i++) code += chars.charAt(Math.floor(Math.random() * chars.length));
+
+      // 使用公開 peerjs 伺服器，ID 前綴避免碰撞
+      const peerId = 'STOCK-ROOM-' + code;
+      peer = new Peer(peerId);
+
+      peer.on('open', (id) => {
+        document.getElementById('entrySection').classList.add('hidden');
+        document.getElementById('hostSection').classList.remove('hidden');
+        document.getElementById('roomInfo').classList.remove('hidden');
+        document.getElementById('roleBadge').innerText = '老師主控台';
+        document.getElementById('roleBadge').className = 'text-xs px-2.5 py-0.5 rounded-full font-semibold bg-indigo-600 text-white';
+
+        document.getElementById('displayRoomCode').innerText = code;
+        document.getElementById('hostRoomCodeDisplay').innerText = code;
+        document.getElementById('displayRound').innerText = currentRound;
+
+        // 產生給學生掃描加入的 QR Code
+        const joinUrl = `${window.location.origin}${window.location.pathname}?room=${code}`;
+        new QRCode(document.getElementById("qrcode"), {
+          text: joinUrl,
+          width: 120,
+          height: 120
+        });
+
+        renderHostStockTable();
+      });
+
+      peer.on('connection', (conn) => {
+        conn.on('open', () => {
+          studentConns[conn.peer] = conn;
+        });
+
+        conn.on('data', (data) => {
+          handleHostReceivedData(conn.peer, data);
+        });
+
+        conn.on('close', () => {
+          delete studentConns[conn.peer];
+          renderHostDashboard();
+        });
+      });
+
+      peer.on('error', (err) => {
+        if(err.type === 'unavailable-id') {
+          alert('房間碼碰撞，請重新點擊開房！');
+          location.reload();
+        } else {
+          console.error(err);
+        }
+      });
+    }
+
+    function handleHostReceivedData(peerId, data) {
+      if (data.type === 'JOIN') {
+        studentsState[peerId] = {
+          name: data.name,
+          cash: 10000,
+          portfolio: { A: 0, B: 0, C: 0, D: 0, E: 0 },
+          readyRound: 0
+        };
+        // 回覆當前輪次狀態給學生
+        broadcastToStudent(peerId, {
+          type: 'SYNC_ROUND',
+          round: currentRound,
+          prices: currentPrices,
+          cash: studentsState[peerId].cash,
+          portfolio: studentsState[peerId].portfolio
+        });
+        renderHostDashboard();
+      } else if (data.type === 'SUBMIT_ORDER') {
+        const student = studentsState[peerId];
+        if (student) {
+          student.cash = data.cash;
+          student.portfolio = data.portfolio;
+          student.readyRound = currentRound;
+        }
+        renderHostDashboard();
+      }
+    }
+
+    function broadcastToStudent(peerId, msg) {
+      if (studentConns[peerId] && studentConns[peerId].open) {
+        studentConns[peerId].send(msg);
+      }
+    }
+
+    function broadcastToAll(msg) {
+      for (let peerId in studentConns) {
+        broadcastToStudent(peerId, msg);
+      }
+    }
+
+    function renderHostDashboard() {
+      const keys = Object.keys(studentsState);
+      const total = keys.length;
+      const readyCount = keys.filter(k => studentsState[k].readyRound === currentRound).length;
+
+      document.getElementById('hostProgressCount').innerText = `${readyCount} / ${total} 人已完成`;
+      const pct = total > 0 ? (readyCount / total) * 100 : 0;
+      document.getElementById('hostProgressBar').style.width = `${pct}%`;
+
+      const roster = document.getElementById('hostStudentRoster');
+      roster.innerHTML = '';
+      keys.forEach(k => {
+        const s = studentsState[k];
+        const isDone = s.readyRound === currentRound;
+        const tag = document.createElement('span');
+        tag.className = `text-xs px-2.5 py-1 rounded-md font-medium border ${isDone ? 'bg-emerald-100 text-emerald-800 border-emerald-300' : 'bg-slate-100 text-slate-500 border-slate-200'}`;
+        tag.innerText = `${s.name} ${isDone ? '✓' : '…'}`;
+        roster.appendChild(tag);
+      });
+    }
+
+    function renderHostStockTable() {
+      const tbody = document.getElementById('hostStockBody');
+      tbody.innerHTML = '';
+      const roundIdx = currentRound - 1;
+      const rates = ROUNDS_DATA[roundIdx] ? ROUNDS_DATA[roundIdx].rates : {};
+
+      for (let k in STOCKS) {
+        const rate = rates[k] || 0;
+        const rateText = rate >= 0 ? `+${(rate * 100).toFixed(0)}%` : `${(rate * 100).toFixed(0)}%`;
+        const rateColor = rate >= 0 ? 'text-rose-600 font-bold' : 'text-emerald-600 font-bold';
+        const tr = document.createElement('tr');
+        tr.innerHTML = `
+          <td class="p-2.5 font-semibold">${STOCKS[k].name} (${k})</td>
+          <td class="p-2.5 font-bold text-slate-900">$${currentPrices[k].toFixed(1)}</td>
+          <td class="p-2.5 ${rateColor}">${rateText}</td>
+        `;
+        tbody.appendChild(tr);
+      }
+    }
+
+    function hostNextRound() {
+      if (!confirm(`確定要推進至下一輪嗎？未下單同學將自動維持既有現金與持股。`)) return;
+
+      const roundIdx = currentRound - 1;
+      const rates = ROUNDS_DATA[roundIdx].rates;
+
+      // 1. 計算新價格
+      for (let k in currentPrices) {
+        const changeRate = rates[k] || 0;
+        currentPrices[k] = Math.max(1, +(currentPrices[k] * (1 + changeRate)).toFixed(1));
+      }
+
+      // 2. 判斷是否結束第 20 輪
+      if (currentRound >= 20) {
+        // 結算大螢幕
+        triggerLeaderboard();
+        broadcastToAll({
+          type: 'GAME_OVER',
+          prices: currentPrices
+        });
+        return;
+      }
+
+      currentRound += 1;
+      document.getElementById('displayRound').innerText = currentRound;
+      renderHostStockTable();
+      renderHostDashboard();
+
+      // 通知所有學生進入下一輪
+      for (let peerId in studentConns) {
+        const s = studentsState[peerId];
+        broadcastToStudent(peerId, {
+          type: 'SYNC_ROUND',
+          round: currentRound,
+          prices: currentPrices,
+          cash: s.cash,
+          portfolio: s.portfolio
+        });
+      }
+    }
+
+    function triggerLeaderboard() {
+      document.getElementById('hostSection').classList.add('hidden');
+      document.getElementById('studentSection').classList.add('hidden');
+      document.getElementById('leaderboardSection').classList.remove('hidden');
+
+      const rankings = [];
+      for (let k in studentsState) {
+        const s = studentsState[k];
+        let stockNet = 0;
+        for (let symbol in s.portfolio) {
+          stockNet += (s.portfolio[symbol] || 0) * currentPrices[symbol];
+        }
+        const total = s.cash + stockNet;
+        const profitRate = ((total - 10000) / 10000) * 100;
+        rankings.push({
+          name: s.name,
+          net: Math.round(total),
+          rate: profitRate.toFixed(1)
+        });
+      }
+
+      rankings.sort((a, b) => b.net - a.net);
+      const top5 = rankings.slice(0, 5);
+      const medals = ['🥇 第一名', '🥈 第二名', '🥉 第三名', '第 4 名', '第 5 名'];
+
+      const tbody = document.getElementById('leaderboardBody');
+      tbody.innerHTML = '';
+      top5.forEach((item, idx) => {
+        const tr = document.createElement('tr');
+        tr.className = idx < 3 ? 'bg-amber-50/70 font-semibold' : '';
+        tr.innerHTML = `
+          <td class="p-2.5 text-center">${medals[idx]}</td>
+          <td class="p-2.5 font-bold">${item.name}</td>
+          <td class="p-2.5 text-right font-black text-indigo-700">$${item.net.toLocaleString()}</td>
+          <td class="p-2.5 text-right font-bold ${item.rate >= 0 ? 'text-rose-600' : 'text-emerald-600'}">
+            ${item.rate >= 0 ? '+' : ''}${item.rate}%
+          </td>
+        `;
+        tbody.appendChild(tr);
+      });
+    }
+
+    // ==========================================================
+    // 學生端 (STUDENT) 邏輯
+    // ==========================================================
+    function joinAsStudent() {
+      const code = document.getElementById('inputRoomCode').value.trim().toUpperCase();
+      const name = document.getElementById('inputStudentName').value.trim();
+
+      if (!code || code.length !== 4) return alert('請輸入正確的 4 位數房間代碼！');
+      if (!name) return alert('請輸入您的姓名或座號！');
+
+      myStudentData.name = name;
+      peer = new Peer(); // 學生端隨機 ID 即可
+
+      peer.on('open', () => {
+        const targetHostId = 'STOCK-ROOM-' + code;
+        hostConn = peer.connect(targetHostId);
+
+        hostConn.on('open', () => {
+          // 通知老師端加入
+          hostConn.send({ type: 'JOIN', name: name });
+
+          document.getElementById('entrySection').classList.add('hidden');
+          document.getElementById('studentSection').classList.remove('hidden');
+          document.getElementById('roomInfo').classList.remove('hidden');
+          document.getElementById('displayRoomCode').innerText = code;
+          document.getElementById('roleBadge').innerText = '學生連線中';
+          document.getElementById('roleBadge').className = 'text-xs px-2.5 py-0.5 rounded-full font-semibold bg-emerald-600 text-white';
+          document.getElementById('stuPlayerName').innerText = name;
+        });
+
+        hostConn.on('data', (data) => {
+          handleStudentReceivedData(data);
+        });
+
+        hostConn.on('close', () => {
+          alert('與老師主機的連線已中斷。');
+        });
+      });
+
+      peer.on('error', (err) => {
+        alert('連線失敗，請確認房間代碼是否正確！');
+        console.error(err);
+      });
+    }
+
+    function handleStudentReceivedData(data) {
+      if (data.type === 'SYNC_ROUND') {
+        currentRound = data.round;
+        currentPrices = data.prices;
+        myStudentData.cash = data.cash;
+        myStudentData.portfolio = data.portfolio;
+        myStudentData.isLocked = false;
+
+        document.getElementById('displayRound').innerText = currentRound;
+        renderStudentUI();
+      } else if (data.type === 'GAME_OVER') {
+        currentPrices = data.prices;
+        // 遊戲結束畫面
+        document.getElementById('studentSection').classList.add('hidden');
+        document.getElementById('leaderboardSection').classList.remove('hidden');
+      }
+    }
+
+    function renderStudentUI() {
+      // 1. 資產數字
+      document.getElementById('stuCash').innerText = `$${Math.round(myStudentData.cash).toLocaleString()}`;
+      let stockVal = 0;
+      for (let k in myStudentData.portfolio) {
+        stockVal += (myStudentData.portfolio[k] || 0) * currentPrices[k];
+      }
+      document.getElementById('stuStockVal').innerText = `$${Math.round(stockVal).toLocaleString()}`;
+      document.getElementById('stuTotalNet').innerText = `$${Math.round(myStudentData.cash + stockVal).toLocaleString()}`;
+
+      // 2. 本輪新聞
+      const newsBox = document.getElementById('stuNewsBox');
+      newsBox.innerHTML = '';
+      const roundIdx = currentRound - 1;
+      const currentNews = ROUNDS_DATA[roundIdx] ? ROUNDS_DATA[roundIdx].news : {};
+
+      for (let k in currentNews) {
+        const p = document.createElement('div');
+        p.innerHTML = `<strong class="text-slate-900">[${STOCKS[k].name}]</strong> ${currentNews[k]}`;
+        newsBox.appendChild(p);
+      }
+
+      // 3. 下單列表
+      const tbody = document.getElementById('stuStockBody');
+      tbody.innerHTML = '';
+      const isLocked = myStudentData.isLocked;
+
+      for (let k in STOCKS) {
+        const price = currentPrices[k];
+        const holding = myStudentData.portfolio[k] || 0;
+        const tr = document.createElement('tr');
+        tr.innerHTML = `
+          <td class="p-2.5 font-semibold text-slate-800">${STOCKS[k].name}</td>
+          <td class="p-2.5 font-bold text-slate-900">$${price.toFixed(1)}</td>
+          <td class="p-2.5 font-medium text-slate-600">${holding} 股</td>
+          <td class="p-2.5">
+            <select id="act_${k}" ${isLocked ? 'disabled' : ''} class="border border-slate-300 rounded px-1.5 py-1 text-xs">
+              <option value="HOLD">維持</option>
+              <option value="BUY">買進</option>
+              <option value="SELL">賣出</option>
+            </select>
+          </td>
+          <td class="p-2.5">
+            <input type="number" id="qty_${k}" min="0" value="0" ${isLocked ? 'disabled' : ''} class="w-16 sm:w-20 border border-slate-300 rounded px-1.5 py-1 text-xs" />
+          </td>
+        `;
+        tbody.appendChild(tr);
+      }
+
+      // 狀態提示
+      const submitBtn = document.getElementById('stuSubmitBtn');
+      const waitCard = document.getElementById('stuWaitCard');
+      const pill = document.getElementById('stuStatusPill');
+
+      if (isLocked) {
+        submitBtn.classList.add('hidden');
+        waitCard.classList.remove('hidden');
+        pill.className = 'text-[11px] px-2 py-0.5 rounded font-semibold bg-emerald-100 text-emerald-700';
+        pill.innerText = '已鎖定送出';
+      } else {
+        submitBtn.classList.remove('hidden');
+        waitCard.classList.add('hidden');
+        pill.className = 'text-[11px] px-2 py-0.5 rounded font-semibold bg-blue-100 text-blue-700';
+        pill.innerText = '思考中';
+      }
+    }
+
+    function stuSubmitOrders() {
+      if (!hostConn || !hostConn.open) return alert('尚未連線到老師主機！');
+
+      let tempCash = myStudentData.cash;
+      const tempPortfolio = { ...myStudentData.portfolio };
+
+      // 檢查現金與庫存
+      for (let k in STOCKS) {
+        const act = document.getElementById(`act_${k}`).value;
+        const qty = parseInt(document.getElementById(`qty_${k}`).value) || 0;
+        const price = currentPrices[k];
+
+        if (act === 'BUY' && qty > 0) {
+          const cost = qty * price;
+          if (tempCash < cost) {
+            return alert(`資金不足！買入 ${qty} 股 ${STOCKS[k].name} 需要 $${Math.round(cost)}，目前可用現金僅剩 $${Math.round(tempCash)}`);
+          }
+          tempCash -= cost;
+          tempPortfolio[k] = (tempPortfolio[k] || 0) + qty;
+        } else if (act === 'SELL' && qty > 0) {
+          const cur = tempPortfolio[k] || 0;
+          if (qty > cur) {
+            return alert(`庫存不足！您僅持有 ${cur} 股 ${STOCKS[k].name}，無法賣出 ${qty} 股`);
+          }
+          tempCash += qty * price;
+          tempPortfolio[k] = cur - qty;
+        }
+      }
+
+      // 更新本地並回傳給老師端
+      myStudentData.cash = tempCash;
+      myStudentData.portfolio = tempPortfolio;
+      myStudentData.isLocked = true;
+
+      hostConn.send({
+        type: 'SUBMIT_ORDER',
+        cash: tempCash,
+        portfolio: tempPortfolio
+      });
+
+      renderStudentUI();
+    }
+  </script>
+</body>
+</html>
